@@ -29,8 +29,9 @@ const MessageList = () => {
     try {
       const nextPage = currentPage + 1;
       
-      // Salvar posição atual do scroll
+      // Salvar posição atual do scroll com mais precisão
       const scrollElement = scrollRef.current;
+      const scrollTopBefore = scrollElement?.scrollTop || 0;
       const scrollHeightBefore = scrollElement?.scrollHeight || 0;
       
       const response = await loadMessages(state.currentInstance.id, currentChat.phone || currentChat.id, nextPage);
@@ -46,14 +47,24 @@ const MessageList = () => {
       
       setCurrentPage(nextPage);
       
-      // Manter posição do scroll após carregar mensagens antigas
-      setTimeout(() => {
-        if (scrollElement) {
-          const scrollHeightAfter = scrollElement.scrollHeight;
-          const scrollDiff = scrollHeightAfter - scrollHeightBefore;
-          scrollElement.scrollTop = scrollElement.scrollTop + scrollDiff;
-        }
-      }, 100);
+      // Usar dois requestAnimationFrame para garantir que o layout foi calculado
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollElement) {
+            const scrollHeightAfter = scrollElement.scrollHeight;
+            const heightDifference = scrollHeightAfter - scrollHeightBefore;
+            
+            // Calcular nova posição do scroll para manter a mesma visualização
+            const newScrollTop = scrollTopBefore + heightDifference;
+            
+            // Aplicar a nova posição com suavidade
+            scrollElement.scrollTo({
+              top: newScrollTop,
+              behavior: 'auto' // Instantâneo para não causar flicker
+            });
+          }
+        });
+      });
       
     } catch (error) {
       console.error('❌ Erro ao carregar mensagens antigas:', error);
@@ -111,8 +122,8 @@ const MessageList = () => {
 
   if (messageLoading) {
     return (
-      <div className="flex-1 bg-gray-50 flex items-center justify-center">
-        <Loading text="Carregando mensagens..." />
+      <div className="flex-1 flex items-center justify-center py-10">
+        <Loading text="Carregando mensagens..." className="scale-125" />
       </div>
     );
   }
@@ -133,14 +144,14 @@ const MessageList = () => {
 
   if (messages.length === 0 && !messageLoading) {
     return (
-      <div className="flex-1 bg-gray-50 flex items-center justify-center" style={{ paddingTop: '50px', paddingBottom: '50px' }}>
-      <div className="text-center text-gray-500">
-        <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-2-2V10a2 2 0 012-2h2m2-4h6a2 2 0 012 2v6a2 2 0 01-2 2h-6m0-8V4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h2" />
-        </svg>
-        <p className="text-lg font-medium">Nenhuma mensagem ainda</p>
-        <p className="text-sm">Seja o primeiro a enviar uma mensagem para {currentChat.name}</p>
-      </div>
+      <div className="flex-1 flex items-center justify-center py-10">
+        <div className="text-center text-gray-500">
+          <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-2-2V10a2 2 0 012-2h2m2-4h6a2 2 0 012 2v6a2 2 0 01-2 2h-6m0-8V4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h2" />
+          </svg>
+          <p className="text-lg font-medium">Nenhuma mensagem ainda</p>
+          <p className="text-sm">Seja o primeiro a enviar uma mensagem para {currentChat.name}</p>
+        </div>
       </div>
     );
   }
@@ -148,9 +159,13 @@ const MessageList = () => {
   return (
     <div 
       ref={scrollRef}
-      className="flex-1 bg-gray-50 overflow-y-auto p-4" 
+      className="h-full bg-gray-50 overflow-y-auto p-4" 
       onScroll={handleScroll}
-      style={{ maxHeight: 'calc(100vh - 200px)' }}
+      style={{ 
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0 // Importante para flex containers
+      }}
     >
       {/* Indicador de carregamento de mensagens antigas */}
       {loadingOlder && (
@@ -171,7 +186,7 @@ const MessageList = () => {
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-4 flex-1" style={{ minHeight: 'fit-content' }}>
         {messages.map((message, index) => (
           <div key={message.id || index} className={`flex ${message.fromMe ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
