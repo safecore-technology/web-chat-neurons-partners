@@ -174,6 +174,7 @@ function appReducer(state, action) {
       return { ...state, chats: action.payload }
 
     case appActions.SET_CURRENT_CHAT:
+      console.log('🔧 Reducer SET_CURRENT_CHAT:', action.payload);
       return { ...state, currentChat: action.payload, messages: [] }
 
     case appActions.UPDATE_CHAT:
@@ -1394,16 +1395,58 @@ export function AppProvider({ children }) {
 
   // Selecionar chat
   const selectChat = async chat => {
-    dispatch({ type: appActions.SET_CURRENT_CHAT, payload: chat })
-
-    if (chat && state.currentInstance) {
-      // Carregar mensagens do chat
-      loadMessages(state.currentInstance.id, chat.id)
-
-      // Marcar como lido se necessário
-      if (chat.unreadCount > 0) {
-        markChatAsRead(state.currentInstance.id, chat.id)
+    console.log('🔍 selectChat chamado com:', chat);
+    
+    // Garantir que o chat tem o formato correto para a API
+    if (chat) {
+      // Garantir que temos o número de telefone como principal identificador
+      const phoneNumber = chat.phone || (chat.Contact?.phone) || 
+                         (chat.remoteJid?.includes('@') ? chat.remoteJid.split('@')[0] : null);
+      
+      if (!phoneNumber) {
+        console.error('❌ Não foi possível determinar o número de telefone do chat:', chat);
+        notificationService.showError('Erro ao selecionar chat: identificador inválido');
+        return;
       }
+      
+      console.log('✅ Número de telefone identificado:', phoneNumber);
+      
+      // Criar versão normalizada do chat
+      const updatedChat = {
+        ...chat,
+        id: chat.id || phoneNumber,
+        phone: phoneNumber,
+        chatId: phoneNumber,  // Usar phone como chatId
+        remoteJid: chat.remoteJid || `${phoneNumber}@s.whatsapp.net`
+      };
+      
+      // Log para debug
+      console.log('🔍 Chat normalizado:', {
+        id: updatedChat.id,
+        phone: updatedChat.phone,
+        remoteJid: updatedChat.remoteJid,
+        chatId: updatedChat.chatId,
+        name: updatedChat.name
+      });
+      
+      console.log('📱 Definindo currentChat no state...');
+      dispatch({ type: appActions.SET_CURRENT_CHAT, payload: updatedChat });
+
+      if (state.currentInstance) {
+        console.log('📱 Carregando mensagens para:', phoneNumber);
+        // Sempre usar o número de telefone como identificador para API
+        await loadMessages(state.currentInstance.id, phoneNumber);
+
+        // Marcar como lido se necessário
+        if (updatedChat.unreadCount > 0) {
+          markChatAsRead(state.currentInstance.id, phoneNumber);
+        }
+      } else {
+        console.warn('⚠️ Nenhuma instância atual disponível');
+      }
+    } else {
+      console.log('🔍 Limpando chat selecionado');
+      dispatch({ type: appActions.SET_CURRENT_CHAT, payload: null });
     }
   }
 
@@ -1411,20 +1454,37 @@ export function AppProvider({ children }) {
   const loadMessages = async (instanceId, chatId, page = 1) => {
     try {
       dispatch({ type: appActions.SET_MESSAGE_LOADING, payload: true })
-      const response = await apiService.getMessages(instanceId, chatId, {
+      
+      // Processar o chatId para garantir compatibilidade
+      let effectiveChatId = state.currentChat?.phone || chatId;
+      
+      // Se for remoteJid no formato número@s.whatsapp.net, extrair apenas o número
+      if (typeof effectiveChatId === 'string' && effectiveChatId.includes('@s.whatsapp.net')) {
+        effectiveChatId = effectiveChatId.split('@')[0];
+      }
+      
+      // Se for UUID ou formato não numérico, tentar usar o phone
+      if (typeof effectiveChatId === 'string' && /[a-zA-Z-]/.test(effectiveChatId)) {
+        effectiveChatId = state.currentChat?.phone || effectiveChatId;
+      }
+      
+      console.log(`📱 Carregando mensagens para instância: ${instanceId}, chat: ${effectiveChatId}`)
+      
+      const response = await apiService.getMessages(instanceId, effectiveChatId, {
         page,
         limit: 50
       })
 
       if (page === 1) {
-        dispatch({ type: appActions.SET_MESSAGES, payload: response.messages })
+        dispatch({ type: appActions.SET_MESSAGES, payload: response.messages || [] })
       } else {
         dispatch({
           type: appActions.PREPEND_MESSAGES,
-          payload: response.messages
+          payload: response.messages || []
         })
       }
     } catch (error) {
+      console.error('❌ Erro ao carregar mensagens:', error.response?.status, error.response?.data?.error || error.message)
       notificationService.showError('Erro ao carregar mensagens')
     } finally {
       dispatch({ type: appActions.SET_MESSAGE_LOADING, payload: false })
@@ -1434,13 +1494,23 @@ export function AppProvider({ children }) {
   // Marcar chat como lido
   const markChatAsRead = async (instanceId, chatId) => {
     try {
-      await apiService.markAsRead(instanceId, chatId)
+      // Processar o chatId para garantir compatibilidade
+      let effectiveChatId = chatId;
+      
+      // Se for remoteJid no formato número@s.whatsapp.net, extrair apenas o número
+      if (typeof effectiveChatId === 'string' && effectiveChatId.includes('@s.whatsapp.net')) {
+        effectiveChatId = effectiveChatId.split('@')[0];
+      }
+      
+      console.log(`🔍 Marcando como lido - instância: ${instanceId}, chat: ${effectiveChatId}`);
+      
+      await apiService.markAsRead(instanceId, effectiveChatId);
       dispatch({
         type: appActions.UPDATE_CHAT,
-        payload: { id: chatId, data: { unreadCount: 0 } }
-      })
+        payload: { id: state.currentChat?.id || chatId, data: { unreadCount: 0 } }
+      });
     } catch (error) {
-      console.error('Erro ao marcar como lido:', error)
+      console.error('❌ Erro ao marcar como lido:', error);
     }
   }
 

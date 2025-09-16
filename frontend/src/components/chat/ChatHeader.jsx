@@ -8,7 +8,7 @@ import { formatPhone } from '../../utils/helpers';
 const ChatHeader = () => {
   const { state, dispatch } = useApp();
   const [showChatInfo, setShowChatInfo] = useState(false);
-  const { activeChat } = state;
+  const { currentChat: activeChat } = state;
 
   if (!activeChat) return null;
 

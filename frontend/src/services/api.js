@@ -228,10 +228,21 @@ class ApiService {
 
   // Mensagens
   async getMessages(instanceId, chatId, params = {}) {
-    const response = await api.get(`/api/${instanceId}/chats/${chatId}/messages`, {
-      params
-    })
-    return response.data
+    // Log para debug
+    console.log(`📱 API: getMessages para instância ${instanceId}, chat ${chatId}`);
+    
+    try {
+      const response = await api.get(`/api/${instanceId}/chats/${chatId}/messages`, {
+        params
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Erro ao obter mensagens: ${error.message}`, {
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      throw error;
+    }
   }
 
   async syncMessages(instanceId, chatId, params = {}) {

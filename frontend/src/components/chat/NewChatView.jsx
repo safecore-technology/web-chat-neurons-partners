@@ -34,7 +34,22 @@ const NewChatView = ({ isOpen, onClose }) => {
       )
     : state.contacts;
 
+  // Log para debug - verificar filteredContacts
+  console.log('🔍 filteredContacts:', {
+    total: filteredContacts.length,
+    firstFew: filteredContacts.slice(0, 3).map(c => ({ name: c.name, phone: c.phone }))
+  });
+
   const handleContactSelect = (contact) => {
+    // Log detalhado do contato selecionado
+    console.log('🔍 handleContactSelect chamado com:', {
+      id: contact.id,
+      name: contact.name,
+      pushName: contact.pushName,
+      phone: contact.phone,
+      fullContact: contact
+    });
+
     // Criar ou encontrar chat para este contato
     const existingChat = state.chats.find(chat => 
       chat.phone === contact.phone || 
@@ -43,19 +58,28 @@ const NewChatView = ({ isOpen, onClose }) => {
     );
     
     if (existingChat) {
+      console.log('✅ Chat existente encontrado:', existingChat.name);
       selectChat(existingChat);
     } else {
-      // Criar novo chat
+      // Criar novo chat - garantir formato correto do remoteJid
+      // IMPORTANTE: Usar o número de telefone como identificador (não UUID)
+      const phoneNumber = contact.phone;
+      const remoteJid = `${phoneNumber}@s.whatsapp.net`;
+      
+      // Log para debug
+      console.log(`🔍 Criando chat para contato: ${contact.name || contact.pushName}, phone: ${phoneNumber}, remoteJid: ${remoteJid}`);
+      
       const newChat = {
-        id: contact.id || contact.phone,
-        remoteJid: contact.id || `${contact.phone}@s.whatsapp.net`,
-        name: contact.name || contact.pushName,
-        phone: contact.phone,
+        id: phoneNumber, // Usar phone como id
+        remoteJid: remoteJid,
+        name: contact.name || contact.pushName || phoneNumber,
+        phone: phoneNumber,
         avatar: contact.profilePicture,
         unreadCount: 0,
         lastMessage: null,
         isGroup: false,
-        Contact: contact
+        Contact: contact,
+        chatId: phoneNumber // Usar phone como chatId também
       };
       selectChat(newChat);
     }
@@ -201,15 +225,27 @@ const NewChatView = ({ isOpen, onClose }) => {
                 initial="hidden"
                 animate="visible"
               >
-                {filteredContacts.map((contact, index) => (
-                  <motion.div
-                    key={contact.id || contact.phone}
-                    variants={itemVariants}
-                    className="flex items-center p-3 hover:bg-gray-50 cursor-pointer transition-colors"
-                    onClick={() => handleContactSelect(contact)}
-                    whileHover={{ backgroundColor: '#f9fafb' }}
-                    whileTap={{ scale: 0.99 }}
-                  >
+                {filteredContacts.map((contact, index) => {
+                  // Log para debug - verificar se cada contato é único
+                  console.log(`🔍 Renderizando contato ${index}:`, {
+                    name: contact.name,
+                    phone: contact.phone,
+                    id: contact.id
+                  });
+                  
+                  return (
+                    <motion.div
+                      key={contact.id || contact.phone}
+                      variants={itemVariants}
+                      className="flex items-center p-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                      onClick={() => {
+                        console.log(`🔍 Clique no contato ${index}:`, contact.name, contact.phone);
+                        handleContactSelect(contact);
+                      }}
+                      whileHover={{ backgroundColor: '#f9fafb' }}
+                      whileTap={{ scale: 0.99 }}
+                    >
+                  
                     <Avatar 
                       src={contact.profilePicture || contact.profilePicUrl}
                       name={contact.name || contact.pushName || contact.phone}
@@ -224,8 +260,9 @@ const NewChatView = ({ isOpen, onClose }) => {
                         {formatPhone(contact.phone)}
                       </p>
                     </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </motion.div>
             )}
           </div>

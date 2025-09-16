@@ -13,7 +13,7 @@ import { MESSAGE_TYPES } from '../../utils/constants';
 
 const Sidebar = () => {
   const appContext = useApp();
-  const { state, dispatch, loadChats, searchMessages } = appContext;
+  const { state, dispatch, loadChats, searchMessages, selectChat } = appContext;
   const { socket } = useSocket();
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -47,10 +47,8 @@ const Sidebar = () => {
   }, [searchTerm]);
 
   const handleChatSelect = (chat) => {
-    dispatch({
-      type: 'SET_ACTIVE_CHAT',
-      payload: chat
-    });
+    console.log('🔍 Sidebar - handleChatSelect chamado com:', chat);
+    selectChat(chat);
   };
 
   const getLastMessagePreview = (chat) => {
@@ -379,7 +377,7 @@ const Sidebar = () => {
                 onClick={() => handleChatSelect(chat)}
                 className={`
                   flex items-center p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition-colors
-                  ${state.activeChat?.id === chat.id ? 'bg-green-50 border-l-4 border-l-green-500' : ''}
+                  ${state.currentChat?.id === chat.id ? 'bg-green-50 border-l-4 border-l-green-500' : ''}
                 `}
               >
                 <Avatar

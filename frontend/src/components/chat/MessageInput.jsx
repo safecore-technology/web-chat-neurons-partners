@@ -2,9 +2,14 @@ import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 
 const MessageInput = () => {
-  const { sendMessage } = useApp();
+  const { state, sendMessage } = useApp();
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Não renderizar se não há chat selecionado
+  if (!state.currentChat) {
+    return null;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();

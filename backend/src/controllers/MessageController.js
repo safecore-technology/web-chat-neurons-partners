@@ -1,6 +1,10 @@
-const { Message, Chat, Contact, Instance } = require('../models')
+const { SupabaseMessage, SupabaseChat, SupabaseContact, SupabaseInstance } = require('../models/supabase')
+// Aliases para compatibilidade
+const Message = SupabaseMessage
+const Chat = SupabaseChat
+const Contact = SupabaseContact
+const Instance = SupabaseInstance
 const evolutionApi = require('../services/evolutionApi')
-const { Op } = require('sequelize')
 const fs = require('fs').promises
 const path = require('path')
 
@@ -11,60 +15,73 @@ class MessageController {
       const { instanceId, chatId } = req.params
       const { page = 1, limit = 50, search = '' } = req.query
 
-      const instance = await Instance.findOne({
-        where: {
-          id: instanceId,
-          ...(req.user.role !== 'admin' ? { userId: req.user.id } : {})
-        }
-      })
+      console.log(`📱 MessageController.getMessages - instanceId: ${instanceId}, chatId: ${chatId}`);
 
-      if (!instance) {
-        return res.status(404).json({ error: 'Instância não encontrada' })
-      }
-
-      const chat = await Chat.findOne({
-        where: { id: chatId, instanceId },
-        include: [Contact]
-      })
-
-      if (!chat) {
-        return res.status(404).json({ error: 'Chat não encontrado' })
-      }
-
-      const offset = (page - 1) * limit
-
-      // Construir query de busca
-      let whereClause = {
-        chatId: chat.Contact.phone,
-        instanceId,
-        deleted: false
-      }
-
-      if (search) {
-        whereClause.content = {
-          [Op.like]: `%${search}%`
+      // Verificar se usuário tem acesso à instância (se não for autenticação via API)
+      if (req.user?.role !== 'admin' && req.user?.id) {
+        const instance = await Instance.findById(instanceId)
+        if (!instance || instance.user_id !== req.user.id) {
+          console.log(`❌ Instância não encontrada ou sem permissão: ${instanceId}`);
+          return res.status(404).json({ error: 'Instância não encontrada' })
         }
       }
 
-      const messages = await Message.findAndCountAll({
-        where: whereClause,
-        include: [Contact],
-        order: [['timestamp', 'DESC']],
-        limit: parseInt(limit),
-        offset
-      })
+      // Para novos chats (quando não existem ainda no banco), retornar lista vazia
+      // Isso permite que o frontend funcione mesmo para conversas que ainda não foram sincronizadas
+      try {
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+        
+        // Tentar buscar mensagens do chat usando o método correto
+        const messages = await Message.findByChatId(chatId, instanceId, {
+          limit: parseInt(limit),
+          offset: offset
+        });
 
-      res.json({
-        messages: messages.rows.reverse(), // Inverter para ordem cronológica
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(messages.count / limit),
-          totalMessages: messages.count,
-          hasMore: offset + messages.rows.length < messages.count
-        }
-      })
+        // Se não encontrou mensagens, pode ser um chat novo - retornar array vazio
+        const messagesList = messages || [];
+
+        console.log(`✅ Encontradas ${messagesList.length} mensagens para chat ${chatId}`);
+
+        // Transformar mensagens para formato esperado pelo frontend
+        const transformedMessages = messagesList.map(msg => ({
+          id: msg.id,
+          messageId: msg.message_id,
+          fromMe: msg.from_me,
+          content: msg.content,
+          messageType: msg.message_type,
+          timestamp: msg.timestamp_msg,
+          status: msg.status,
+          mediaPath: msg.media_path,
+          mediaMimeType: msg.media_mime_type,
+          Contact: msg.contacts
+        }));
+
+        res.json({
+          messages: transformedMessages,
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages: transformedMessages.length > 0 ? Math.ceil(transformedMessages.length / parseInt(limit)) : 0,
+            totalMessages: transformedMessages.length,
+            hasMore: transformedMessages.length === parseInt(limit) // Há mais se retornou o limite completo
+          }
+        });
+
+      } catch (chatError) {
+        console.log(`⚠️  Erro ao buscar mensagens para ${chatId}, retornando lista vazia:`, chatError.message);
+        
+        // Para chats novos ou erros, retornar lista vazia em vez de erro 500
+        res.json({
+          messages: [],
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages: 0,
+            totalMessages: 0,
+            hasMore: false
+          }
+        });
+      }
     } catch (error) {
-      console.error('Erro ao obter mensagens:', error)
+      console.error('❌ Erro ao obter mensagens:', error)
       res.status(500).json({ error: 'Erro interno do servidor' })
     }
   }

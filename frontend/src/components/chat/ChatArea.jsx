@@ -40,7 +40,7 @@ const ChatArea = () => {
     };
   }, [state?.currentInstance, checkInstanceStatus]);
 
-  if (!state?.activeChat) {
+  if (!state?.currentChat) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50">
         <div className="text-center max-w-md">
