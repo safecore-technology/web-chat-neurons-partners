@@ -405,24 +405,34 @@ class EvolutionAPIService {
     }
   }
 
-  // Obter mensagens de um chat - API correta do Evolution
-  async getChatMessages(instanceName, chatId, limit = 50) {
+  // Obter mensagens de um chat - API correta do Evolution com paginação
+  async getChatMessages(instanceName, chatId, options = {}) {
     try {
-      const response = await this.api.post(`/chat/findMessages/${instanceName}`, {
+      const { page = 1, offset = 0, limit = 50 } = options;
+      
+      // Construir o payload baseado no formato da documentação da Evolution API
+      const payload = {
         where: {
           key: {
             remoteJid: chatId
           }
-        },
-        limit: limit
-      })
-      return response.data
+        }
+      };
+
+      // Adicionar paginação - sempre incluir para garantir funcionamento
+      payload.page = page;
+      payload.offset = offset;
+      payload.limit = limit;
+
+      const response = await this.api.post(`/chat/findMessages/${instanceName}`, payload);
+      
+      return response.data;
     } catch (error) {
       console.error(
-        'Erro ao obter mensagens:',
+        'Erro ao obter mensagens da Evolution API:',
         error.response?.data || error.message
-      )
-      throw error
+      );
+      throw error;
     }
   }
 

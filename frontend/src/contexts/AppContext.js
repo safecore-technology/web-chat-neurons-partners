@@ -1455,6 +1455,8 @@ export function AppProvider({ children }) {
     try {
       dispatch({ type: appActions.SET_MESSAGE_LOADING, payload: true })
       
+      // Debug logs removidos para produção
+      
       // Processar o chatId para garantir compatibilidade
       let effectiveChatId = state.currentChat?.phone || chatId;
       
@@ -1468,24 +1470,33 @@ export function AppProvider({ children }) {
         effectiveChatId = state.currentChat?.phone || effectiveChatId;
       }
       
-      console.log(`📱 Carregando mensagens para instância: ${instanceId}, chat: ${effectiveChatId}`)
-      
       const response = await apiService.getMessages(instanceId, effectiveChatId, {
         page,
         limit: 50
       })
 
       if (page === 1) {
+        // Primeira página: definir mensagens (mais recentes no final)
         dispatch({ type: appActions.SET_MESSAGES, payload: response.messages || [] })
       } else {
+        // Páginas antigas: adicionar no início (PREPEND - mensagens mais antigas)
         dispatch({
           type: appActions.PREPEND_MESSAGES,
           payload: response.messages || []
         })
       }
+      
+      // Retornar a resposta completa para o componente usar a paginação
+      return response;
     } catch (error) {
-      console.error('❌ Erro ao carregar mensagens:', error.response?.status, error.response?.data?.error || error.message)
+      console.error('❌ Erro ao carregar mensagens:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+        url: error.config?.url
+      });
       notificationService.showError('Erro ao carregar mensagens')
+      throw error; // Re-throw para que o componente possa tratar
     } finally {
       dispatch({ type: appActions.SET_MESSAGE_LOADING, payload: false })
     }

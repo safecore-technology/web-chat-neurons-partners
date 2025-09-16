@@ -15,7 +15,15 @@ class MessageController {
       const { instanceId, chatId } = req.params
       const { page = 1, limit = 50, search = '' } = req.query
 
-      console.log(`📱 MessageController.getMessages - instanceId: ${instanceId}, chatId: ${chatId}`);
+      console.log(`� MessageController.getMessages RECEBIDO:`, {
+        instanceId,
+        chatId,
+        page,
+        limit,
+        query: req.query,
+        params: req.params,
+        url: req.originalUrl
+      });
 
       // Verificar se usuário tem acesso à instância (se não for autenticação via API)
       if (req.user?.role !== 'admin' && req.user?.id) {
@@ -26,64 +34,238 @@ class MessageController {
         }
       }
 
-      // Para novos chats (quando não existem ainda no banco), retornar lista vazia
-      // Isso permite que o frontend funcione mesmo para conversas que ainda não foram sincronizadas
+      // Buscar instância para obter o nome para a Evolution API
+      const instance = await Instance.findById(instanceId);
+      
+      if (!instance) {
+        return res.status(404).json({ error: 'Instância não encontrada' });
+      }
+
       try {
-        const offset = (parseInt(page) - 1) * parseInt(limit);
+        // Preparar o remoteJid - garantir formato correto
+        let remoteJid = chatId;
         
-        // Tentar buscar mensagens do chat usando o método correto
-        const messages = await Message.findByChatId(chatId, instanceId, {
-          limit: parseInt(limit),
-          offset: offset
+        // Se é apenas um número, adicionar @s.whatsapp.net
+        if (/^\d+$/.test(chatId)) {
+          remoteJid = `${chatId}@s.whatsapp.net`;
+        }
+        
+        // Usar evolution_instance_id se disponível, senão usar name
+        const evolutionInstanceName = instance.evolution_instance_id || instance.name;
+
+        // Buscar mensagens diretamente da Evolution API
+        const evolutionResponse = await evolutionApi.getChatMessages(evolutionInstanceName, remoteJid, {
+          page: parseInt(page),
+          offset: (parseInt(page) - 1) * parseInt(limit),
+          limit: parseInt(limit)
         });
 
-        // Se não encontrou mensagens, pode ser um chat novo - retornar array vazio
-        const messagesList = messages || [];
+        // A resposta da Evolution API tem a estrutura: { messages: { total, pages, currentPage, records } }
+        const messagesData = evolutionResponse?.messages || evolutionResponse;
+        const messageRecords = messagesData?.records || messagesData || [];
 
-        console.log(`✅ Encontradas ${messagesList.length} mensagens para chat ${chatId}`);
+        // Evolution API response processed
 
-        // Transformar mensagens para formato esperado pelo frontend
-        const transformedMessages = messagesList.map(msg => ({
-          id: msg.id,
-          messageId: msg.message_id,
-          fromMe: msg.from_me,
-          content: msg.content,
-          messageType: msg.message_type,
-          timestamp: msg.timestamp_msg,
-          status: msg.status,
-          mediaPath: msg.media_path,
-          mediaMimeType: msg.media_mime_type,
-          Contact: msg.contacts
-        }));
+        // Transformar mensagens da Evolution API para formato do frontend
+        const transformedMessages = messageRecords.map((msg) => {
+          return {
+            id: msg.id || msg.key?.id || `${Date.now()}-${Math.random()}`,
+            messageId: msg.key?.id,
+            fromMe: msg.key?.fromMe || false,
+            content: MessageController.extractMessageContent(msg.message),
+            messageType: msg.messageType || MessageController.getMessageType(msg.message),
+            timestamp: msg.messageTimestamp ? 
+              new Date(parseInt(msg.messageTimestamp) * 1000).toISOString() : 
+              new Date().toISOString(),
+            status: msg.status || 'delivered',
+            mediaPath: MessageController.getMediaPath(msg.message),
+            mediaMimeType: MessageController.getMediaMimeType(msg.message),
+            pushName: msg.pushName,
+            remoteJid: msg.key?.remoteJid
+          };
+        });
+
+        // Sempre ordenar mensagens por timestamp cronológico (mais antigas primeiro)
+        // O frontend vai exibir corretamente: antigas no topo, recentes embaixo
+        transformedMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        // Messages transformed successfully
+
+        // Calcular informações de paginação baseado na resposta da Evolution API
+        const totalMessages = messagesData?.total || transformedMessages.length;
+        const totalPages = messagesData?.pages || Math.ceil(totalMessages / parseInt(limit));
+        const currentPageFromAPI = messagesData?.currentPage || parseInt(page);
+        const hasMore = currentPageFromAPI < totalPages;
 
         res.json({
           messages: transformedMessages,
           pagination: {
-            currentPage: parseInt(page),
-            totalPages: transformedMessages.length > 0 ? Math.ceil(transformedMessages.length / parseInt(limit)) : 0,
-            totalMessages: transformedMessages.length,
-            hasMore: transformedMessages.length === parseInt(limit) // Há mais se retornou o limite completo
+            currentPage: currentPageFromAPI,
+            totalPages: totalPages,
+            totalMessages: totalMessages,
+            hasMore: hasMore
           }
         });
 
-      } catch (chatError) {
-        console.log(`⚠️  Erro ao buscar mensagens para ${chatId}, retornando lista vazia:`, chatError.message);
+      } catch (evolutionError) {
+        console.log(`⚠️  Erro ao buscar mensagens da Evolution API para ${chatId}:`, evolutionError.message);
         
-        // Para chats novos ou erros, retornar lista vazia em vez de erro 500
-        res.json({
-          messages: [],
-          pagination: {
-            currentPage: parseInt(page),
-            totalPages: 0,
-            totalMessages: 0,
-            hasMore: false
-          }
-        });
+        // Fallback: tentar buscar do banco local
+        try {
+          const offset = (parseInt(page) - 1) * parseInt(limit);
+          
+          const localMessages = await Message.findByChatId(chatId, instanceId, {
+            limit: parseInt(limit),
+            offset: offset
+          });
+
+          const messagesList = localMessages || [];
+
+          console.log(`📦 Fallback: encontradas ${messagesList.length} mensagens locais para chat ${chatId}`);
+
+          const transformedMessages = messagesList.map(msg => ({
+            id: msg.id,
+            messageId: msg.message_id,
+            fromMe: msg.from_me,
+            content: msg.content,
+            messageType: msg.message_type,
+            timestamp: msg.timestamp_msg,
+            status: msg.status,
+            mediaPath: msg.media_path,
+            mediaMimeType: msg.media_mime_type,
+            Contact: msg.contacts
+          }));
+
+          res.json({
+            messages: transformedMessages,
+            pagination: {
+              currentPage: parseInt(page),
+              totalPages: transformedMessages.length > 0 ? Math.ceil(transformedMessages.length / parseInt(limit)) : 0,
+              totalMessages: transformedMessages.length,
+              hasMore: transformedMessages.length === parseInt(limit)
+            }
+          });
+
+        } catch (localError) {
+          console.log(`⚠️  Erro também no banco local, retornando lista vazia:`, localError.message);
+          
+          // Para chats novos ou erros, retornar lista vazia em vez de erro 500
+          res.json({
+            messages: [],
+            pagination: {
+              currentPage: parseInt(page),
+              totalPages: 0,
+              totalMessages: 0,
+              hasMore: false
+            }
+          });
+        }
       }
     } catch (error) {
       console.error('❌ Erro ao obter mensagens:', error)
       res.status(500).json({ error: 'Erro interno do servidor' })
     }
+  }
+
+  // Helper para extrair conteúdo da mensagem
+  static extractMessageContent(message) {
+    if (!message) return 'Mensagem sem conteúdo';
+    
+    // Mensagem de texto simples
+    if (message.conversation) {
+      return message.conversation;
+    }
+    
+    // Mensagem de texto estendida
+    if (message.extendedTextMessage?.text) {
+      return message.extendedTextMessage.text;
+    }
+    
+    // Mensagens de mídia com caption
+    if (message.imageMessage?.caption) {
+      return message.imageMessage.caption;
+    }
+    
+    if (message.videoMessage?.caption) {
+      return message.videoMessage.caption;
+    }
+    
+    if (message.documentMessage?.caption) {
+      return message.documentMessage.caption;
+    }
+    
+    // Mensagens de mídia sem caption - mostrar tipo + nome do arquivo se disponível
+    if (message.imageMessage) {
+      return '📷 Imagem';
+    }
+    
+    if (message.videoMessage) {
+      return '🎥 Vídeo';
+    }
+    
+    if (message.audioMessage) {
+      return '🎵 Áudio';
+    }
+    
+    if (message.documentMessage) {
+      const fileName = message.documentMessage.fileName || 'Documento';
+      return `📄 ${fileName}`;
+    }
+    
+    if (message.stickerMessage) {
+      return '😄 Sticker';
+    }
+    
+    if (message.locationMessage) {
+      return '📍 Localização';
+    }
+    
+    if (message.contactMessage) {
+      return '👤 Contato';
+    }
+    
+    return 'Mensagem de mídia';
+  }
+
+  // Helper para determinar tipo da mensagem
+  static getMessageType(message) {
+    if (!message) return 'text';
+    
+    if (message.conversation) return 'text';
+    if (message.extendedTextMessage) return 'text';
+    if (message.imageMessage) return 'image';
+    if (message.videoMessage) return 'video';
+    if (message.audioMessage) return 'audio';
+    if (message.documentMessage) return 'document';
+    if (message.stickerMessage) return 'sticker';
+    if (message.locationMessage) return 'location';
+    if (message.contactMessage) return 'contact';
+    
+    return 'text';
+  }
+
+  // Helper para extrair caminho da mídia
+  static getMediaPath(message) {
+    if (!message) return null;
+    
+    if (message.imageMessage?.url) return message.imageMessage.url;
+    if (message.videoMessage?.url) return message.videoMessage.url;
+    if (message.audioMessage?.url) return message.audioMessage.url;
+    if (message.documentMessage?.url) return message.documentMessage.url;
+    
+    return null;
+  }
+
+  // Helper para extrair mime type da mídia
+  static getMediaMimeType(message) {
+    if (!message) return null;
+    
+    if (message.imageMessage?.mimetype) return message.imageMessage.mimetype;
+    if (message.videoMessage?.mimetype) return message.videoMessage.mimetype;
+    if (message.audioMessage?.mimetype) return message.audioMessage.mimetype;
+    if (message.documentMessage?.mimetype) return message.documentMessage.mimetype;
+    
+    return null;
   }
 
   // Enviar mensagem de texto
