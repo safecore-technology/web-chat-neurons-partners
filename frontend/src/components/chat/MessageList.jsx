@@ -42,14 +42,14 @@ const MessageList = () => {
 
   if (messages.length === 0) {
     return (
-      <div className="flex-1 bg-gray-50 flex items-center justify-center">
-        <div className="text-center text-gray-500">
-          <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-2-2V10a2 2 0 012-2h2m2-4h6a2 2 0 012 2v6a2 2 0 01-2 2h-6m0-8V4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h2" />
-          </svg>
-          <p className="text-lg font-medium">Nenhuma mensagem ainda</p>
-          <p className="text-sm">Seja o primeiro a enviar uma mensagem para {currentChat.name}</p>
-        </div>
+      <div className="flex-1 bg-gray-50 flex items-center justify-center" style={{ paddingTop: '50px', paddingBottom: '50px' }}>
+      <div className="text-center text-gray-500">
+        <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-2-2V10a2 2 0 012-2h2m2-4h6a2 2 0 012 2v6a2 2 0 01-2 2h-6m0-8V4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h2" />
+        </svg>
+        <p className="text-lg font-medium">Nenhuma mensagem ainda</p>
+        <p className="text-sm">Seja o primeiro a enviar uma mensagem para {currentChat.name}</p>
+      </div>
       </div>
     );
   }
