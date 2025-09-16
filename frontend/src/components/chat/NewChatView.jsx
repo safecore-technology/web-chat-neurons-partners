@@ -50,11 +50,44 @@ const NewChatView = ({ isOpen, onClose }) => {
       fullContact: contact
     });
 
+    // Extrair identificador do contato (pode ser número de telefone ou ID interno)
+    // A Evolution API pode retornar o número em diferentes campos ou um ID interno
+    let contactIdentifier = contact.phone;
+    
+    // Se não tem phone, tentar extrair do id
+    if (!contactIdentifier && contact.id) {
+      if (contact.id.includes('@s.whatsapp.net')) {
+        contactIdentifier = contact.id.split('@')[0];
+      } else if (contact.id.includes('@g.us')) {
+        // É um grupo, usar o id completo
+        contactIdentifier = contact.id;
+      } else {
+        // Usar o ID direto (pode ser número ou hash interno)
+        contactIdentifier = contact.id;
+      }
+    }
+    
+    // Se ainda não tem identificador, tentar outros campos
+    if (!contactIdentifier) {
+      contactIdentifier = contact.number || contact.remoteJid;
+      if (contactIdentifier && contactIdentifier.includes('@')) {
+        contactIdentifier = contactIdentifier.split('@')[0];
+      }
+    }
+    
+    if (!contactIdentifier) {
+      console.error('❌ Não foi possível extrair identificador do contato:', contact);
+      return;
+    }
+    
+    console.log('✅ Identificador extraído:', contactIdentifier);
+
     // Criar ou encontrar chat para este contato
     const existingChat = state.chats.find(chat => 
-      chat.phone === contact.phone || 
+      chat.phone === contactIdentifier || 
       chat.remoteJid === contact.id ||
-      chat.Contact?.phone === contact.phone
+      chat.Contact?.phone === contactIdentifier ||
+      chat.id === contactIdentifier
     );
     
     if (existingChat) {
@@ -62,24 +95,26 @@ const NewChatView = ({ isOpen, onClose }) => {
       selectChat(existingChat);
     } else {
       // Criar novo chat - garantir formato correto do remoteJid
-      // IMPORTANTE: Usar o número de telefone como identificador (não UUID)
-      const phoneNumber = contact.phone;
-      const remoteJid = `${phoneNumber}@s.whatsapp.net`;
+      const isGroup = contact.id?.includes('@g.us') || false;
+      const remoteJid = isGroup ? contact.id : `${contactIdentifier}@s.whatsapp.net`;
       
       // Log para debug
-      console.log(`🔍 Criando chat para contato: ${contact.name || contact.pushName}, phone: ${phoneNumber}, remoteJid: ${remoteJid}`);
+      console.log(`🔍 Criando chat para contato: ${contact.name || contact.pushName}, identifier: ${contactIdentifier}, remoteJid: ${remoteJid}, isGroup: ${isGroup}`);
       
       const newChat = {
-        id: phoneNumber, // Usar phone como id
+        id: contactIdentifier, // Usar identificador como id
         remoteJid: remoteJid,
-        name: contact.name || contact.pushName || phoneNumber,
-        phone: phoneNumber,
-        avatar: contact.profilePicture,
+        name: contact.name || contact.pushName || contactIdentifier,
+        phone: contactIdentifier, // Manter compatibilidade
+        avatar: contact.profilePicture || contact.profilePictureUrl,
         unreadCount: 0,
         lastMessage: null,
-        isGroup: false,
-        Contact: contact,
-        chatId: phoneNumber // Usar phone como chatId também
+        isGroup: isGroup,
+        Contact: {
+          ...contact,
+          phone: contactIdentifier // Garantir que o Contact também tem o identificador
+        },
+        chatId: contactIdentifier // Usar identificador como chatId também
       };
       selectChat(newChat);
     }
@@ -226,20 +261,35 @@ const NewChatView = ({ isOpen, onClose }) => {
                 animate="visible"
               >
                 {filteredContacts.map((contact, index) => {
+                  // Extrair número de telefone para exibição (só se for realmente um número)
+                  let displayPhone = contact.phone;
+                  if (!displayPhone && contact.id) {
+                    if (contact.id.includes('@s.whatsapp.net')) {
+                      const extracted = contact.id.split('@')[0];
+                      // Só usar se for um número válido (pelo menos 8 dígitos)
+                      if (/^\d{8,}$/.test(extracted)) {
+                        displayPhone = extracted;
+                      }
+                    } else if (!contact.id.includes('@g.us') && /^\d{8,}$/.test(contact.id)) {
+                      // Só usar o ID se for um número válido
+                      displayPhone = contact.id;
+                    }
+                  }
+                  
                   // Log para debug - verificar se cada contato é único
                   console.log(`🔍 Renderizando contato ${index}:`, {
-                    name: contact.name,
-                    phone: contact.phone,
+                    name: contact.name || contact.pushName,
+                    phone: displayPhone,
                     id: contact.id
                   });
                   
                   return (
                     <motion.div
-                      key={contact.id || contact.phone}
+                      key={contact.id || displayPhone || index}
                       variants={itemVariants}
                       className="flex items-center p-3 hover:bg-gray-50 cursor-pointer transition-colors"
                       onClick={() => {
-                        console.log(`🔍 Clique no contato ${index}:`, contact.name, contact.phone);
+                        console.log(`🔍 Clique no contato ${index}:`, contact.name || contact.pushName, displayPhone);
                         handleContactSelect(contact);
                       }}
                       whileHover={{ backgroundColor: '#f9fafb' }}
@@ -248,16 +298,20 @@ const NewChatView = ({ isOpen, onClose }) => {
                   
                     <Avatar 
                       src={contact.profilePicture || contact.profilePicUrl}
-                      name={contact.name || contact.pushName || contact.phone}
+                      name={contact.name || contact.pushName || displayPhone || 'Contato'}
                       size="md"
                       className="mr-3"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900 truncate text-sm">
-                        {contact.name || contact.pushName || 'Sem nome'}
+                        {contact.name || contact.pushName || displayPhone || 'Sem nome'}
                       </p>
                       <p className="text-xs text-gray-500 truncate">
-                        {formatPhone(contact.phone)}
+                        {/* Só mostrar o número se for realmente um número de telefone válido */}
+                        {displayPhone && /^\d+$/.test(displayPhone) ? 
+                          formatPhone(displayPhone) : 
+                          (contact.id?.includes('@g.us') ? 'Grupo' : 'Contato do WhatsApp')
+                        }
                       </p>
                     </div>
                     </motion.div>
