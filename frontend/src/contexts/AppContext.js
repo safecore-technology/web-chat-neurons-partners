@@ -398,7 +398,26 @@ const AppContext = createContext()
 
 // Provider
 export function AppProvider({ children }) {
+  // Estado da aplicação
   const [state, dispatch] = useReducer(appReducer, initialState)
+
+  // Refs para evitar stale closures nos handlers de socket
+  const currentInstanceRef = useRef(null)
+  const currentChatRef = useRef(null)
+  const chatsRef = useRef([])
+
+  // Sempre manter os refs sincronizados com o estado mais recente
+  useEffect(() => {
+    currentInstanceRef.current = state.currentInstance
+  }, [state.currentInstance])
+
+  useEffect(() => {
+    currentChatRef.current = state.currentChat
+  }, [state.currentChat])
+
+  useEffect(() => {
+    chatsRef.current = state.chats
+  }, [state.chats])
   const { isAuthenticated } = useAuth()
   const { isConnected, emit } = useSocket()
 
@@ -524,7 +543,7 @@ export function AppProvider({ children }) {
     socketService.on('message_received', data => {
       console.log('📱 Mensagem recebida via webhook:', data)
       
-      if (!data.message || !data.instanceId) {
+      if (!data.message || !data.instanceId || !data.chatId) {
         console.warn('❌ Mensagem recebida incompleta:', data)
         return
       }
@@ -533,73 +552,84 @@ export function AppProvider({ children }) {
         // Extrair informações da mensagem recebida
         const msg = data.message
         const instanceId = data.instanceId
+        const chatId = data.chatId
         const timestamp = new Date().toISOString()
         
         // Verificar se a instância é a atual
-        if (instanceId !== state.currentInstance?.id) {
+        const currentInstance = currentInstanceRef.current
+        if (instanceId !== currentInstance?.id) {
           console.log(`⏭️ [${timestamp}] Mensagem para outra instância (${instanceId}), ignorando`)
           return
         }
         
-        // Processar o jid do remetente para obter o chatId
-        const remoteJid = msg.key?.remoteJid
-        if (!remoteJid) {
-          console.warn(`❌ [${timestamp}] Mensagem sem remoteJid:`, msg)
-          return
-        }
-        
-        // Salvar o remoteJid completo para compatibilidade com a Evolution API
-        const fullRemoteJid = remoteJid
-        
-        // Normalizar o chatId (remover o @s.whatsapp.net ou @g.us)
-        let chatId = remoteJid
-        if (chatId.includes('@')) {
-          chatId = chatId.split('@')[0]
-        }
-        
-        console.log(`🔍 [${timestamp}] Processando mensagem para chat ${chatId}, fromMe: ${msg.key.fromMe}`)
-        
-        // Extrair tipo de mensagem e conteúdo
-        const messageType = MessageController.getMessageType(msg.message)
-        const content = MessageController.extractMessageContent(msg.message)
-        
-        console.log(`📄 [${timestamp}] Tipo de mensagem: ${messageType}, Conteúdo: ${content}`)
-        
-        // Criar objeto de mensagem formatado
-        const formattedMessage = {
-          id: msg.key.id,
-          content: content,
-          timestamp: new Date(msg.messageTimestamp * 1000).toISOString(),
-          fromMe: msg.key.fromMe,
-          messageType: messageType,
-          status: msg.key.fromMe ? 'sent' : 'received',
-          mediaUrl: null,
-          quotedMessage: null
-        }
+        console.log(`🔍 [${timestamp}] Processando mensagem para chat ${chatId}, fromMe: ${msg.fromMe}`)
         
         // Verificar se o chat já existe na lista
-        let existingChat = state.chats.find(c => 
+        const chats = chatsRef.current || []
+        let existingChat = chats.find(c => 
           c.id === chatId || 
-          c.remoteJid === fullRemoteJid || 
+          c.remoteJid === msg.remoteJid || 
           (c.id && chatId && c.id.toString() === chatId.toString())
         )
         
-        // Verificar se é para o chat atual
-        const isCurrentChat = state.currentChat?.id === chatId || 
-                           (state.currentChat?.remoteJid === fullRemoteJid)
+        // Verificar se é para o chat atual de várias maneiras
+        const currentChat = currentChatRef.current
+        const isCurrentChat = (
+          // Verificar por ID diretamente
+          currentChat?.id === chatId || 
+          // Verificar por remoteJid
+          currentChat?.remoteJid === msg.remoteJid ||
+          // Verificar se os IDs são equivalentes como strings
+          (currentChat?.id && chatId && currentChat.id.toString() === chatId.toString()) ||
+          // Verificar se os números de telefone coincidem (casos onde temos formatações diferentes)
+          (currentChat?.phone && chatId.includes(currentChat.phone)) ||
+          (currentChat?.chatId && chatId.includes(currentChat.chatId)) ||
+          // Verificar o inverso (telefone dentro do chatId)
+          (currentChat?.phone && currentChat.phone.includes(chatId)) ||
+          (currentChat?.chatId && currentChat.chatId.includes(chatId))
+        )
         
         console.log(`🎯 [${timestamp}] É chat atual? ${isCurrentChat ? 'Sim' : 'Não'}`)
         console.log(`🔍 [${timestamp}] Chat existente encontrado? ${existingChat ? 'Sim' : 'Não'}`)
+        console.log(`🔄 [${timestamp}] Estado atual do chat:`, {
+          'currentChat.id': currentChat?.id,
+          'currentChat.phone': currentChat?.phone,
+          'currentChat.chatId': currentChat?.chatId,
+          'currentChat.remoteJid': currentChat?.remoteJid,
+          'chatId recebido': chatId,
+          'remoteJid recebido': msg.remoteJid
+        })
         
         // Adicionar mensagem ao estado se for o chat atual
         if (isCurrentChat) {
           console.log(`➕ [${timestamp}] Adicionando mensagem ao estado atual`)
-          dispatch({ type: appActions.ADD_MESSAGE, payload: formattedMessage })
+          
+          // Preparar mensagem para exibição na UI
+          const messageForState = {
+            ...msg,
+            // Adicionar campos adicionais para compatibilidade com o formato esperado pelo MessageList
+            Contact: {
+              id: chatId,
+              name: existingChat?.name || chatId,
+              phone: chatId
+            }
+          }
+          
+          console.log(`✅ [${timestamp}] Adicionando mensagem ao estado do chat atual:`, messageForState)
+          
+          // Adicionar mensagem ao estado
+          dispatch({ type: appActions.ADD_MESSAGE, payload: messageForState })
+          
+          // Se não for uma mensagem enviada por mim, marcar como lida
+          if (!msg.fromMe && currentInstance) {
+            console.log(`📝 [${timestamp}] Marcando mensagem como lida automaticamente pois o chat está aberto`)
+            markChatAsRead(currentInstance.id, chatId)
+          }
         }
         
         // Determinar a contagem de não lidas
         const currentUnreadCount = existingChat?.unreadCount || 0
-        const newUnreadCount = msg.key.fromMe ? 0 : (isCurrentChat ? 0 : currentUnreadCount + 1)
+        const newUnreadCount = msg.fromMe ? 0 : (isCurrentChat ? 0 : currentUnreadCount + 1)
         
         console.log(`🔢 [${timestamp}] Contagem atual de não lidas: ${currentUnreadCount}, Nova contagem: ${newUnreadCount}`)
         
@@ -611,12 +641,12 @@ export function AppProvider({ children }) {
               id: existingChat.id,
               data: {
                 lastMessage: {
-                  content: content,
-                  type: messageType,
-                  fromMe: msg.key.fromMe,
-                  timestamp: formattedMessage.timestamp
+                  content: msg.content,
+                  type: msg.messageType,
+                  fromMe: msg.fromMe,
+                  timestamp: msg.timestamp
                 },
-                lastMessageTime: formattedMessage.timestamp,
+                lastMessageTime: msg.timestamp,
                 unreadCount: newUnreadCount
               }
             }
@@ -628,10 +658,10 @@ export function AppProvider({ children }) {
         }
         
         // Mostrar notificação se necessário
-        if (!msg.key.fromMe && notificationService.isUserAway()) {
+        if (!msg.fromMe && notificationService.isUserAway()) {
           const contactName = existingChat?.name || chatId
           console.log(`🔔 [${timestamp}] Mostrando notificação para ${contactName}`)
-          notificationService.showMessageNotification(contactName, content)
+          notificationService.showMessageNotification(contactName, msg.content)
         }
       } catch (error) {
         console.error('❌ Erro ao processar mensagem recebida:', error)

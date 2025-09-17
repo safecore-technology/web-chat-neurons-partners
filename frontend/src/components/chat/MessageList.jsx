@@ -111,12 +111,21 @@ const MessageList = () => {
     }
   }, [currentChat?.id]);
 
-  // Scroll para o final quando as mensagens carregam pela primeira vez
+  // Scroll para o final quando as mensagens carregam pela primeira vez ou quando novas mensagens chegam
   useEffect(() => {
-    if (messages.length > 0 && scrollRef.current && currentPage === 1) {
+    if (messages.length > 0 && scrollRef.current) {
       setTimeout(() => {
         if (scrollRef.current) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          // Verificar se já estamos perto do final para não interromper a leitura
+          const scrollElement = scrollRef.current;
+          const isNearBottom = scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight < 300;
+          
+          // Se estamos na primeira página, sempre rolar para o final
+          // OU se estamos perto do final, rolar para o final quando novas mensagens chegam
+          if (currentPage === 1 || isNearBottom) {
+            console.log('📜 Rolando para o final da conversa - novas mensagens ou primeira carga')
+            scrollElement.scrollTop = scrollElement.scrollHeight;
+          }
         }
       }, 100);
     }
@@ -190,12 +199,17 @@ const MessageList = () => {
 
       <div className="space-y-4 flex-1" style={{ minHeight: 'fit-content' }}>
         {messages.map((message, index) => (
-          <div key={message.id || index} className={`flex ${message.fromMe ? 'justify-end' : 'justify-start'}`}>
+          <div key={message.id || `msg-${index}`} className={`flex ${message.fromMe ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
               message.fromMe 
                 ? 'bg-green-500 text-white' 
                 : 'bg-white text-gray-900 border'
             }`}>
+              {message.source === 'webhook' && (
+                <div className="text-xs mb-1 font-light text-gray-100">
+                  {message.fromMe ? 'Você' : message.pushName || 'Contato'}
+                </div>
+              )}
               <p className="text-sm">{message.content || 'Mensagem sem conteúdo'}</p>
               <p className="text-xs mt-1 opacity-75">
                 {message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : 'Agora'}

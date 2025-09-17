@@ -35,10 +35,10 @@ const NewChatView = ({ isOpen, onClose }) => {
     : state.contacts;
 
   // Log para debug - verificar filteredContacts
-  console.log('🔍 filteredContacts:', {
-    total: filteredContacts.length,
-    firstFew: filteredContacts.slice(0, 3).map(c => ({ name: c.name, phone: c.phone }))
-  });
+  // console.log('🔍 filteredContacts:', {
+  //   total: filteredContacts.length,
+  //   firstFew: filteredContacts.slice(0, 3).map(c => ({ name: c.name, phone: c.phone }))
+  // });
 
   const handleContactSelect = (contact) => {
     // Log detalhado do contato selecionado

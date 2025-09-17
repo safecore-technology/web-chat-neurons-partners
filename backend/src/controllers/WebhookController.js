@@ -203,16 +203,35 @@ class WebhookController {
   // Processar novas mensagens
   async handleMessagesUpsert(instance, eventData, io) {
     try {
-      const messages = eventData.data?.messages || []
-      if (!Array.isArray(messages) || messages.length === 0) return
+      // O formato do evento messages.upsert pode variar
+      // Ele pode ter uma lista de mensagens em eventData.data.messages
+      // Ou pode ter a mensagem diretamente em eventData.data
+      
+      let messages = [];
+      
+      if (eventData.data && Array.isArray(eventData.data.messages)) {
+        // Formato com array de mensagens
+        messages = eventData.data.messages;
+      } else if (eventData.data && eventData.data.key && eventData.data.message) {
+        // Mensagem única diretamente no objeto data
+        messages = [eventData.data];
+      } else if (Array.isArray(eventData.data)) {
+        // Mensagens em array direto no data
+        messages = eventData.data;
+      }
+      
+      if (messages.length === 0) {
+        console.log('⚠️ Nenhuma mensagem encontrada no evento:', JSON.stringify(eventData.data));
+        return;
+      }
 
-      console.log(`💬 Processando ${messages.length} mensagem(ns)...`)
+      console.log(`💬 Processando ${messages.length} mensagem(ns)...`);
 
       for (const msg of messages) {
-        await this.processMessage(instance, msg, io)
+        await this.processMessage(instance, msg, io);
       }
     } catch (error) {
-      console.error('Erro ao processar mensagens:', error)
+      console.error('Erro ao processar mensagens:', error);
     }
   }
 
@@ -223,14 +242,37 @@ class WebhookController {
       console.log(`📝 Processando mensagem - ID: ${msg.key?.id}, From: ${msg.key?.remoteJid}, FromMe: ${msg.key?.fromMe}`)
       console.log(`💬 Timestamp: ${msg.messageTimestamp}, Type: ${this.getMessageType(msg.message)}`)
       
-      // TODO: Implementar salvamento completo no Supabase
-      // Por enquanto apenas processamento básico
+      // Processar dados da mensagem para o formato esperado pelo frontend
+      const messageType = this.getMessageType(msg.message)
+      const content = this.extractMessageContent(msg.message)
+      
+      // Normalizar o JID para obter o chatId
+      let chatId = msg.key.remoteJid
+      if (chatId.includes('@')) {
+        chatId = chatId.split('@')[0]
+      }
+      
+      // Formatar mensagem para o frontend
+      const formattedMessage = {
+        id: msg.key.id,
+        key: msg.key,
+        fromMe: msg.key.fromMe,
+        chatId: chatId,
+        remoteJid: msg.key.remoteJid,
+        messageType: messageType,
+        content: content,
+        timestamp: new Date(msg.messageTimestamp * 1000).toISOString(),
+        status: msg.key.fromMe ? 'sent' : 'received',
+        pushName: msg.pushName || chatId,
+        source: 'webhook'
+      }
       
       // Emitir mensagem via Socket.IO para frontend
-      console.log(`🔔 Emitindo evento message_received para instance_${instance.id}`)
+      console.log(`🔔 Emitindo evento message_received para instance_${instance.id} com chatId=${chatId}`)
       io.to(`instance_${instance.id}`).emit('message_received', {
         instanceId: instance.id,
-        message: msg
+        chatId: chatId,
+        message: formattedMessage
       })
       
     } catch (error) {
@@ -253,6 +295,23 @@ class WebhookController {
     if (message.contactMessage) return 'contact';
     
     return Object.keys(message)[0] || 'unknown';
+  }
+  
+  // Helper para extrair conteúdo da mensagem
+  extractMessageContent(message) {
+    if (!message) return '';
+    
+    if (message.conversation) return message.conversation;
+    if (message.extendedTextMessage) return message.extendedTextMessage.text;
+    if (message.imageMessage) return message.imageMessage.caption || 'Imagem';
+    if (message.videoMessage) return message.videoMessage.caption || 'Vídeo';
+    if (message.audioMessage) return 'Áudio';
+    if (message.documentMessage) return message.documentMessage.fileName || 'Documento';
+    if (message.stickerMessage) return 'Sticker';
+    if (message.locationMessage) return 'Localização';
+    if (message.contactMessage) return message.contactMessage.displayName || 'Contato';
+    
+    return 'Mensagem';
   }
 
   // Atualizar status de mensagens

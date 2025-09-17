@@ -107,21 +107,21 @@ export function AuthProvider({ children }) {
 
   // Verificar token ao carregar a aplicação
   useEffect(() => {
-    console.log('🔍 Inicializando AuthContext...')
-    console.log('🔍 URL atual:', window.location.href)
-    console.log('🔍 Query string:', window.location.search)
+    // console.log('🔍 Inicializando AuthContext...')
+    // console.log('🔍 URL atual:', window.location.href)
+    // console.log('🔍 Query string:', window.location.search)
     
     // Detectar se está em modo iframe
     const isIframe = window.self !== window.top || window.location.search.includes('iframe=true')
-    console.log('🔍 É iframe?', isIframe)
-    console.log('🔍 window.self !== window.top:', window.self !== window.top)
-    console.log('🔍 Contém iframe=true:', window.location.search.includes('iframe=true'))
+    // console.log('🔍 É iframe?', isIframe)
+    // console.log('🔍 window.self !== window.top:', window.self !== window.top)
+    // console.log('🔍 Contém iframe=true:', window.location.search.includes('iframe=true'))
     
     if (isIframe) {
-      console.log('🖼️ Modo iframe detectado, inicializando...')
+      // console.log('🖼️ Modo iframe detectado, inicializando...')
       initializeIframeMode()
     } else {
-      console.log('🔐 Modo normal detectado, verificando token...')
+      // console.log('🔐 Modo normal detectado, verificando token...')
       verifyToken()
     }
   }, [])
@@ -129,7 +129,7 @@ export function AuthProvider({ children }) {
   // Inicializar modo iframe
   const initializeIframeMode = async () => {
     try {
-      console.log('🖼️ Inicializando modo iframe...')
+      // console.log('🖼️ Inicializando modo iframe...')
       
       // Primeiro marcar como iframe mode para evitar redirecionamentos
       dispatch({ type: authActions.SET_IFRAME_MODE, payload: true })
@@ -138,9 +138,9 @@ export function AuthProvider({ children }) {
       
       // Obter token para iframe mode
       const response = await apiService.get('/api/auth/iframe-token')
-      
-      console.log('✅ Token iframe obtido com sucesso')
-      
+
+      // console.log('✅ Token iframe obtido com sucesso')
+
       // Salvar token e usuário no localStorage
       localStorage.setItem('whatsapp_token', response.token)
       localStorage.setItem('whatsapp_user', JSON.stringify(response.user))
@@ -153,7 +153,7 @@ export function AuthProvider({ children }) {
         }
       })
 
-      console.log('✅ Modo iframe inicializado com sucesso')
+      //console.log('✅ Modo iframe inicializado com sucesso')
 
     } catch (error) {
       console.error('❌ Erro ao inicializar modo iframe:', error)
