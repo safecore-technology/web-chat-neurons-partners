@@ -178,13 +178,34 @@ function appReducer(state, action) {
       return { ...state, currentChat: action.payload, messages: [] }
 
     case appActions.UPDATE_CHAT:
+      // Encontrar o chat a ser atualizado
+      const updatedChat = state.chats.find(chat => chat.id === action.payload.id);
+      
+      // Se o chat não existe, retornar o estado atual
+      if (!updatedChat) {
+        return state;
+      }
+      
+      // Criar o chat atualizado
+      const chatWithUpdates = { ...updatedChat, ...action.payload.data };
+      
+      // Se contém lastMessageTime, reordenar chats
+      const shouldReorder = action.payload.data.lastMessageTime !== undefined;
+      
       return {
         ...state,
-        chats: state.chats.map(chat =>
-          chat.id === action.payload.id
-            ? { ...chat, ...action.payload.data }
-            : chat
-        ),
+        // Se deve reordenar, remove o chat atual da lista e adiciona no início
+        chats: shouldReorder 
+          ? [
+              chatWithUpdates,
+              ...state.chats.filter(chat => chat.id !== action.payload.id)
+            ]
+          : state.chats.map(chat =>
+              chat.id === action.payload.id
+                ? chatWithUpdates
+                : chat
+            ),
+        // Atualizar o chat atual se for o mesmo
         currentChat:
           state.currentChat?.id === action.payload.id
             ? { ...state.currentChat, ...action.payload.data }
@@ -497,6 +518,124 @@ export function AppProvider({ children }) {
         type: appActions.UPDATE_MESSAGE,
         payload: { id: data.messageId, data: { status: data.status } }
       })
+    })
+
+    // Mensagem recebida via webhook (Evolution API)
+    socketService.on('message_received', data => {
+      console.log('📱 Mensagem recebida via webhook:', data)
+      
+      if (!data.message || !data.instanceId) {
+        console.warn('❌ Mensagem recebida incompleta:', data)
+        return
+      }
+      
+      try {
+        // Extrair informações da mensagem recebida
+        const msg = data.message
+        const instanceId = data.instanceId
+        const timestamp = new Date().toISOString()
+        
+        // Verificar se a instância é a atual
+        if (instanceId !== state.currentInstance?.id) {
+          console.log(`⏭️ [${timestamp}] Mensagem para outra instância (${instanceId}), ignorando`)
+          return
+        }
+        
+        // Processar o jid do remetente para obter o chatId
+        const remoteJid = msg.key?.remoteJid
+        if (!remoteJid) {
+          console.warn(`❌ [${timestamp}] Mensagem sem remoteJid:`, msg)
+          return
+        }
+        
+        // Salvar o remoteJid completo para compatibilidade com a Evolution API
+        const fullRemoteJid = remoteJid
+        
+        // Normalizar o chatId (remover o @s.whatsapp.net ou @g.us)
+        let chatId = remoteJid
+        if (chatId.includes('@')) {
+          chatId = chatId.split('@')[0]
+        }
+        
+        console.log(`🔍 [${timestamp}] Processando mensagem para chat ${chatId}, fromMe: ${msg.key.fromMe}`)
+        
+        // Extrair tipo de mensagem e conteúdo
+        const messageType = MessageController.getMessageType(msg.message)
+        const content = MessageController.extractMessageContent(msg.message)
+        
+        console.log(`📄 [${timestamp}] Tipo de mensagem: ${messageType}, Conteúdo: ${content}`)
+        
+        // Criar objeto de mensagem formatado
+        const formattedMessage = {
+          id: msg.key.id,
+          content: content,
+          timestamp: new Date(msg.messageTimestamp * 1000).toISOString(),
+          fromMe: msg.key.fromMe,
+          messageType: messageType,
+          status: msg.key.fromMe ? 'sent' : 'received',
+          mediaUrl: null,
+          quotedMessage: null
+        }
+        
+        // Verificar se o chat já existe na lista
+        let existingChat = state.chats.find(c => 
+          c.id === chatId || 
+          c.remoteJid === fullRemoteJid || 
+          (c.id && chatId && c.id.toString() === chatId.toString())
+        )
+        
+        // Verificar se é para o chat atual
+        const isCurrentChat = state.currentChat?.id === chatId || 
+                           (state.currentChat?.remoteJid === fullRemoteJid)
+        
+        console.log(`🎯 [${timestamp}] É chat atual? ${isCurrentChat ? 'Sim' : 'Não'}`)
+        console.log(`🔍 [${timestamp}] Chat existente encontrado? ${existingChat ? 'Sim' : 'Não'}`)
+        
+        // Adicionar mensagem ao estado se for o chat atual
+        if (isCurrentChat) {
+          console.log(`➕ [${timestamp}] Adicionando mensagem ao estado atual`)
+          dispatch({ type: appActions.ADD_MESSAGE, payload: formattedMessage })
+        }
+        
+        // Determinar a contagem de não lidas
+        const currentUnreadCount = existingChat?.unreadCount || 0
+        const newUnreadCount = msg.key.fromMe ? 0 : (isCurrentChat ? 0 : currentUnreadCount + 1)
+        
+        console.log(`🔢 [${timestamp}] Contagem atual de não lidas: ${currentUnreadCount}, Nova contagem: ${newUnreadCount}`)
+        
+        if (existingChat) {
+          // Atualizar o chat existente
+          dispatch({
+            type: appActions.UPDATE_CHAT,
+            payload: {
+              id: existingChat.id,
+              data: {
+                lastMessage: {
+                  content: content,
+                  type: messageType,
+                  fromMe: msg.key.fromMe,
+                  timestamp: formattedMessage.timestamp
+                },
+                lastMessageTime: formattedMessage.timestamp,
+                unreadCount: newUnreadCount
+              }
+            }
+          })
+        } else {
+          // Se o chat não existe, recarregar a lista completa para obter atualizações
+          console.log(`🔄 [${timestamp}] Chat não encontrado na lista atual, recarregando chats...`)
+          loadChats(instanceId)
+        }
+        
+        // Mostrar notificação se necessário
+        if (!msg.key.fromMe && notificationService.isUserAway()) {
+          const contactName = existingChat?.name || chatId
+          console.log(`🔔 [${timestamp}] Mostrando notificação para ${contactName}`)
+          notificationService.showMessageNotification(contactName, content)
+        }
+      } catch (error) {
+        console.error('❌ Erro ao processar mensagem recebida:', error)
+      }
     })
 
     // Atualização de conexão da instância
@@ -1037,16 +1176,44 @@ export function AppProvider({ children }) {
       if (!instanceId) throw new Error('instanceId ausente')
       console.log('🔄 Carregando chats para instanceId:', instanceId)
 
-      // Primeiro tentar carregar chats locais
+      // Buscar chats diretamente da API Evolution
       let response = await apiService.getChats(instanceId)
-      console.log('📱 Chats locais:', response)
+      console.log('📱 Chats da API Evolution:', response)
       
       // Verificar chats em formato de array
       const chatsArray = Array.isArray(response.chats) ? response.chats : 
                         (Array.isArray(response) ? response : []);
       
+      // Formatar os chats para o formato esperado pelo frontend
+      const formattedChats = chatsArray.map(chat => {
+        // Extrair dados da última mensagem
+        const lastMessage = chat.lastMessage || {};
+        
+        return {
+          id: chat.id || chat.remoteJid,
+          remoteJid: chat.remoteJid,
+          name: chat.pushName || (chat.remoteJid ? chat.remoteJid.split('@')[0] : 'Desconhecido'),
+          avatar: chat.profilePicUrl || null,
+          lastMessage: {
+            content: lastMessage.message?.conversation || 
+                   lastMessage.messageType || 
+                   'Nova mensagem',
+            type: lastMessage.messageType || 'text',
+            fromMe: lastMessage.key?.fromMe || false,
+            timestamp: lastMessage.messageTimestamp ? 
+                     new Date(lastMessage.messageTimestamp * 1000).toISOString() : 
+                     new Date().toISOString()
+          },
+          lastMessageTime: chat.updatedAt || (lastMessage.messageTimestamp ? 
+                          new Date(lastMessage.messageTimestamp * 1000).toISOString() : 
+                          new Date().toISOString()),
+          unreadCount: chat.unreadCount || 0,
+          isGroup: chat.remoteJid?.endsWith('@g.us') || false
+        };
+      });
+      
       // Ordena os chats por última mensagem se disponível
-      const sortedChats = chatsArray.sort((a, b) => {
+      const sortedChats = formattedChats.sort((a, b) => {
         const dateA = a.lastMessageTime ? new Date(a.lastMessageTime) : new Date(0);
         const dateB = b.lastMessageTime ? new Date(b.lastMessageTime) : new Date(0);
         return dateB - dateA;
@@ -1458,17 +1625,16 @@ export function AppProvider({ children }) {
       // Debug logs removidos para produção
       
       // Processar o chatId para garantir compatibilidade
-      let effectiveChatId = state.currentChat?.phone || chatId;
+      // Usar sempre o chatId passado como parâmetro, não o state (evita race condition)
+      let effectiveChatId = chatId;
       
       // Se for remoteJid no formato número@s.whatsapp.net, extrair apenas o número
       if (typeof effectiveChatId === 'string' && effectiveChatId.includes('@s.whatsapp.net')) {
         effectiveChatId = effectiveChatId.split('@')[0];
       }
       
-      // Se for UUID ou formato não numérico, tentar usar o phone
-      if (typeof effectiveChatId === 'string' && /[a-zA-Z-]/.test(effectiveChatId)) {
-        effectiveChatId = state.currentChat?.phone || effectiveChatId;
-      }
+      // Se for UUID ou formato não numérico, usar como está (será tratado no backend)
+      // Removido a dependência do state.currentChat para evitar usar dados do chat anterior
       
       const response = await apiService.getMessages(instanceId, effectiveChatId, {
         page,
@@ -1898,6 +2064,87 @@ export function AppProvider({ children }) {
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
+}
+
+// Utilitários para processamento de mensagens do webhook
+// Estas funções são cópias simplificadas do MessageController do backend
+const MessageController = {
+  // Helper para determinar tipo da mensagem
+  getMessageType(message) {
+    if (!message) return 'text';
+    
+    if (message.conversation) return 'text';
+    if (message.extendedTextMessage) return 'text';
+    if (message.imageMessage) return 'image';
+    if (message.videoMessage) return 'video';
+    if (message.audioMessage) return 'audio';
+    if (message.documentMessage) return 'document';
+    if (message.stickerMessage) return 'sticker';
+    if (message.locationMessage) return 'location';
+    if (message.contactMessage) return 'contact';
+    
+    return 'text';
+  },
+
+  // Helper para extrair conteúdo da mensagem
+  extractMessageContent(message) {
+    if (!message) return 'Mensagem sem conteúdo';
+    
+    // Mensagem de texto simples
+    if (message.conversation) {
+      return message.conversation;
+    }
+    
+    // Mensagem de texto estendida
+    if (message.extendedTextMessage?.text) {
+      return message.extendedTextMessage.text;
+    }
+    
+    // Mensagens de mídia com caption
+    if (message.imageMessage?.caption) {
+      return message.imageMessage.caption;
+    }
+    
+    if (message.videoMessage?.caption) {
+      return message.videoMessage.caption;
+    }
+    
+    if (message.documentMessage?.caption) {
+      return message.documentMessage.caption;
+    }
+    
+    // Mensagens de mídia sem caption - mostrar tipo + nome do arquivo se disponível
+    if (message.imageMessage) {
+      return '📷 Imagem';
+    }
+    
+    if (message.videoMessage) {
+      return '🎥 Vídeo';
+    }
+    
+    if (message.audioMessage) {
+      return '🎵 Áudio';
+    }
+    
+    if (message.documentMessage) {
+      const fileName = message.documentMessage.fileName || 'Documento';
+      return `📄 ${fileName}`;
+    }
+    
+    if (message.stickerMessage) {
+      return '😄 Sticker';
+    }
+    
+    if (message.locationMessage) {
+      return '📍 Localização';
+    }
+    
+    if (message.contactMessage) {
+      return '👤 Contato';
+    }
+    
+    return 'Mensagem de mídia';
+  }
 }
 
 // Hook para usar o contexto

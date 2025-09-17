@@ -187,8 +187,16 @@ class ApiService {
 
   // Chats
   async getChats(instanceId) {
-    const response = await api.get(`/api/${instanceId}/chats`)
-    return response.data
+    try {
+      // Buscar chats direto da Evolution API para tempo real
+      const response = await api.get(`/api/${instanceId}/chats/findChats`)
+      return response.data
+    } catch (error) {
+      console.error('Erro ao buscar chats:', error)
+      // Fallback para API local se falhar
+      const fallbackResponse = await api.get(`/api/${instanceId}/chats`)
+      return fallbackResponse.data
+    }
   }
 
   async syncChats(instanceId) {

@@ -34,7 +34,9 @@ const MessageList = () => {
       const scrollTopBefore = scrollElement?.scrollTop || 0;
       const scrollHeightBefore = scrollElement?.scrollHeight || 0;
       
-      const response = await loadMessages(state.currentInstance.id, currentChat.phone || currentChat.id, nextPage);
+      // Usar sempre o phone do currentChat atual para garantir consistência
+      const chatIdentifier = currentChat.phone || currentChat.chatId || currentChat.id;
+      const response = await loadMessages(state.currentInstance.id, chatIdentifier, nextPage);
       
       // Se a resposta tem paginação, usar hasMore da resposta
       if (response && response.pagination) {

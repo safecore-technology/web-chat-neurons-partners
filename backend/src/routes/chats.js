@@ -9,6 +9,7 @@ router.use(hybridAuth)
 
 // Rotas de chats
 router.get('/:instanceId/chats', ChatController.getChats)
+router.get('/:instanceId/chats/findChats', ChatController.getChatsFromEvolution) // Nova rota direto da Evolution API
 router.post('/:instanceId/chats/sync', ChatController.syncChats)
 router.get('/:instanceId/chats/:chatId', ChatController.getChat)
 router.put('/:instanceId/chats/:chatId/read', ChatController.markAsRead)

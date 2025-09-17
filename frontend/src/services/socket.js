@@ -125,6 +125,11 @@ class SocketService {
     this.socket.on('message_update', data => {
       this.emit('message_update', data)
     })
+    
+    this.socket.on('message_received', data => {
+      console.log('📩 Socket recebeu evento message_received:', data)
+      this.emit('message_received', data)
+    })
 
     this.socket.on('new_notification', data => {
       this.emit('new_notification', data)

@@ -219,13 +219,15 @@ class WebhookController {
   // Processar uma mensagem individual  
   async processMessage(instance, msg, io) {
     try {
-      // Log básico da mensagem
-      console.log(`📝 Mensagem recebida - ID: ${msg.key?.id}, From: ${msg.key?.remoteJid}`)
+      // Log mais detalhado da mensagem
+      console.log(`📝 Processando mensagem - ID: ${msg.key?.id}, From: ${msg.key?.remoteJid}, FromMe: ${msg.key?.fromMe}`)
+      console.log(`💬 Timestamp: ${msg.messageTimestamp}, Type: ${this.getMessageType(msg.message)}`)
       
       // TODO: Implementar salvamento completo no Supabase
       // Por enquanto apenas processamento básico
       
       // Emitir mensagem via Socket.IO para frontend
+      console.log(`🔔 Emitindo evento message_received para instance_${instance.id}`)
       io.to(`instance_${instance.id}`).emit('message_received', {
         instanceId: instance.id,
         message: msg
@@ -234,6 +236,23 @@ class WebhookController {
     } catch (error) {
       console.error('Erro ao processar mensagem:', error)
     }
+  }
+  
+  // Helper para determinar tipo da mensagem
+  getMessageType(message) {
+    if (!message) return 'unknown';
+    
+    if (message.conversation) return 'text';
+    if (message.extendedTextMessage) return 'text';
+    if (message.imageMessage) return 'image';
+    if (message.videoMessage) return 'video';
+    if (message.audioMessage) return 'audio';
+    if (message.documentMessage) return 'document';
+    if (message.stickerMessage) return 'sticker';
+    if (message.locationMessage) return 'location';
+    if (message.contactMessage) return 'contact';
+    
+    return Object.keys(message)[0] || 'unknown';
   }
 
   // Atualizar status de mensagens

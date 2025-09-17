@@ -563,6 +563,51 @@ class ChatController {
       res.status(500).json({ error: 'Erro interno do servidor' })
     }
   }
+  
+  // Obter chats diretamente da Evolution API
+  async getChatsFromEvolution(req, res) {
+    try {
+      const { instanceId } = req.params
+      
+      // Evitar consultas inválidas
+      if (!instanceId || instanceId === 'undefined') {
+        return res.status(400).json({ error: 'Parâmetro instanceId inválido' })
+      }
+      
+      // Verificar se o usuário tem acesso à instância
+      if (req.user?.role !== 'admin' && req.user?.id) {
+        const instance = await Instance.findById(instanceId)
+        if (!instance || instance.user_id !== req.user.id) {
+          return res.status(404).json({ error: 'Instância não encontrada' })
+        }
+      }
+      
+      // Buscar a instância para obter o nome da instância na Evolution API
+      const instance = await Instance.findById(instanceId)
+      if (!instance || !instance.evolution_instance_id) {
+        return res.status(404).json({ error: 'Instância não encontrada ou não conectada à Evolution API' })
+      }
+      
+      // Buscar chats direto da Evolution API
+      const chats = await evolutionApi.getChats(instance.evolution_instance_id)
+      console.log(`📱 Retornando ${chats?.length || 0} chats da Evolution API para o frontend`)
+      
+      // Retornar os chats
+      res.json({
+        chats: chats || [],
+        pagination: {
+          page: 1,
+          limit: chats?.length || 0,
+          total: chats?.length || 0,
+          totalPages: 1,
+          hasMore: false
+        }
+      })
+    } catch (error) {
+      console.error('Erro ao obter chats da Evolution API:', error)
+      res.status(500).json({ error: 'Erro interno do servidor' })
+    }
+  }
 }
 
 module.exports = new ChatController()

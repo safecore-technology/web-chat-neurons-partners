@@ -29,6 +29,25 @@ const Sidebar = () => {
       loadChats(state.currentInstance.id);
     }
   }, [state.currentInstance]);
+  
+  // Configurar recarga automática de chats a cada 30 segundos
+  useEffect(() => {
+    let intervalId;
+    
+    if (state.currentInstance?.id) {
+      // Recarregar a lista de chats a cada 30 segundos para garantir dados atualizados
+      intervalId = setInterval(() => {
+        console.log('🔄 Recarregando lista de chats automaticamente...');
+        loadChats(state.currentInstance.id);
+      }, 30000); // 30 segundos
+    }
+    
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [state.currentInstance?.id]);
 
   useEffect(() => {
     // Buscar chats quando o termo de busca mudar
@@ -54,7 +73,7 @@ const Sidebar = () => {
   const getLastMessagePreview = (chat) => {
     if (!chat.lastMessage) return 'Nenhuma mensagem';
 
-    // chat.lastMessage vem como string JSON, precisa fazer parse
+    // chat.lastMessage pode vir como objeto direto ou string JSON
     let messageObj;
     try {
       messageObj = typeof chat.lastMessage === 'string' 
@@ -100,7 +119,15 @@ const Sidebar = () => {
   const getLastMessageTime = (chat) => {
     if (!chat.lastMessage) return '';
     
-    // Parse do lastMessage se for string
+    // Usar lastMessageTime direto do chat se disponível (formato da Evolution API)
+    if (chat.lastMessageTime) {
+      const date = new Date(chat.lastMessageTime);
+      if (isValid(date)) {
+        return formatMessageDate(date);
+      }
+    }
+    
+    // Fallback para o formato anterior
     let messageObj;
     try {
       messageObj = typeof chat.lastMessage === 'string' 
@@ -113,6 +140,17 @@ const Sidebar = () => {
     if (!messageObj?.timestamp) return '';
     
     const date = new Date(messageObj.timestamp);
+    
+    return formatMessageDate(date);
+  };
+  
+  // Função auxiliar para verificar se a data é válida
+  const isValid = (date) => {
+    return date instanceof Date && !isNaN(date);
+  };
+  
+  // Função auxiliar para formatar a data da mensagem
+  const formatMessageDate = (date) => {
     
     if (isToday(date)) {
       return date.toLocaleTimeString('pt-BR', {
@@ -381,18 +419,18 @@ const Sidebar = () => {
                 `}
               >
                 <Avatar
-                  src={chat.avatar}
-                  name={chat.name}
+                  src={chat.avatar || chat.profilePicUrl}
+                  name={chat.name || chat.pushName || (chat.remoteJid ? chat.remoteJid.split('@')[0] : '')}
                   size="md"
                   status={chat.presence}
-                  isGroup={chat.isGroup}
+                  isGroup={chat.isGroup || (chat.remoteJid && chat.remoteJid.endsWith('@g.us'))}
                   className="mr-3"
                 />
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="text-sm font-medium text-gray-900 truncate">
-                      {chat.name || chat.phone}
+                      {chat.name || chat.pushName || chat.phone || (chat.remoteJid ? chat.remoteJid.split('@')[0] : 'Chat')}
                     </h3>
                     <span className="text-xs text-gray-500">
                       {getLastMessageTime(chat)}
