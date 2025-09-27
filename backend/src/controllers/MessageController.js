@@ -68,12 +68,19 @@ class MessageController {
 
         // Transformar mensagens da Evolution API para formato do frontend
         const transformedMessages = messageRecords.map((msg) => {
+          const locationMetadata = MessageController.getLocationData(msg.message);
+          const rawMessageType = locationMetadata
+            ? 'location'
+            : msg.messageType || MessageController.getMessageType(msg.message);
+          const messageType = MessageController.normalizeMessageType(rawMessageType);
+          const messageContent = MessageController.extractMessageContent(msg.message, locationMetadata);
+
           return {
             id: msg.id || msg.key?.id || `${Date.now()}-${Math.random()}`,
             messageId: msg.key?.id,
             fromMe: msg.key?.fromMe || false,
-            content: MessageController.extractMessageContent(msg.message),
-            messageType: msg.messageType || MessageController.getMessageType(msg.message),
+            content: messageContent,
+            messageType,
             timestamp: msg.messageTimestamp ? 
               new Date(parseInt(msg.messageTimestamp) * 1000).toISOString() : 
               new Date().toISOString(),
@@ -81,7 +88,13 @@ class MessageController {
             mediaPath: MessageController.getMediaPath(msg.message),
             mediaMimeType: MessageController.getMediaMimeType(msg.message),
             pushName: msg.pushName,
-            remoteJid: msg.key?.remoteJid
+            remoteJid: msg.key?.remoteJid,
+            message: msg.message || null,
+            location: locationMetadata,
+            mapsUrl: locationMetadata?.url || null,
+            locationThumbnail: locationMetadata?.thumbnail || null,
+            sticker: MessageController.getStickerData(msg.message),
+            source: msg.source || 'api'
           };
         });
 
@@ -168,7 +181,7 @@ class MessageController {
   }
 
   // Helper para extrair conteúdo da mensagem
-  static extractMessageContent(message) {
+  static extractMessageContent(message, locationMetadata = null) {
     if (!message) return 'Mensagem sem conteúdo';
     
     // Mensagem de texto simples
@@ -217,6 +230,23 @@ class MessageController {
     }
     
     if (message.locationMessage) {
+      if (locationMetadata) {
+        if (locationMetadata.label) {
+          return `📍 ${locationMetadata.label}`;
+        }
+
+        if (typeof locationMetadata.latitude === 'number' && typeof locationMetadata.longitude === 'number') {
+          return `📍 ${locationMetadata.latitude.toFixed(6)}, ${locationMetadata.longitude.toFixed(6)}`;
+        }
+      }
+
+      const lat = message.locationMessage.degreesLatitude ?? message.locationMessage.latitude;
+      const lon = message.locationMessage.degreesLongitude ?? message.locationMessage.longitude;
+
+      if (typeof lat === 'number' && typeof lon === 'number') {
+        return `📍 ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+      }
+
       return '📍 Localização';
     }
     
@@ -244,6 +274,18 @@ class MessageController {
     return 'text';
   }
 
+  static normalizeMessageType(messageType) {
+    if (!messageType) return 'text';
+
+    if (messageType === 'stickerMessage') return 'sticker';
+    if (messageType === 'imageMessage') return 'imageMessage';
+    if (messageType === 'videoMessage') return 'videoMessage';
+    if (messageType === 'audioMessage') return 'audioMessage';
+    if (messageType === 'documentMessage') return 'documentMessage';
+
+    return messageType;
+  }
+
   // Helper para extrair caminho da mídia
   static getMediaPath(message) {
     if (!message) return null;
@@ -252,6 +294,7 @@ class MessageController {
     if (message.videoMessage?.url) return message.videoMessage.url;
     if (message.audioMessage?.url) return message.audioMessage.url;
     if (message.documentMessage?.url) return message.documentMessage.url;
+    if (message.stickerMessage?.url) return message.stickerMessage.url;
     
     return null;
   }
@@ -264,8 +307,52 @@ class MessageController {
     if (message.videoMessage?.mimetype) return message.videoMessage.mimetype;
     if (message.audioMessage?.mimetype) return message.audioMessage.mimetype;
     if (message.documentMessage?.mimetype) return message.documentMessage.mimetype;
+    if (message.stickerMessage?.mimetype) return message.stickerMessage.mimetype || 'image/webp';
     
     return null;
+  }
+
+  static getStickerData(message) {
+    const sticker = message?.stickerMessage;
+    if (!sticker) return null;
+
+    return {
+      isAnimated: Boolean(sticker.isAnimated),
+      isLottie: Boolean(sticker.isLottie),
+      mimetype: sticker.mimetype || 'image/webp',
+      fileSha256: sticker.fileSha256 || null,
+      fileEncSha256: sticker.fileEncSha256 || null,
+      mediaKey: sticker.mediaKey || null,
+      fileLength: sticker.fileLength || null,
+      directPath: sticker.directPath || null
+    };
+  }
+
+  static getLocationData(message) {
+    const location = message?.locationMessage;
+    if (!location) return null;
+
+    const latitude = location.degreesLatitude ?? location.latitude ?? location.lat ?? null;
+    const longitude = location.degreesLongitude ?? location.longitude ?? location.lng ?? null;
+
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      return null;
+    }
+
+    const label = location.name || location.address || location.caption || location.description || null;
+    const thumbnail = location.jpegThumbnail || null;
+    const url = `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+    return {
+      latitude,
+      longitude,
+      label,
+      thumbnail,
+      url,
+      address: location.address || null,
+      name: location.name || null,
+      description: location.caption || location.description || null
+    };
   }
 
   // Enviar mensagem de texto
@@ -711,6 +798,78 @@ class MessageController {
       res.json({ message: 'Mensagem deletada com sucesso' })
     } catch (error) {
       console.error('Erro ao deletar mensagem:', error)
+      res.status(500).json({ error: 'Erro interno do servidor' })
+    }
+  }
+
+  // Obter mídia em base64 da Evolution API
+  async getBase64FromMedia(req, res) {
+    try {
+      const { instanceId, messageId } = req.params
+      const { convertToMp4 } = req.query
+
+      console.log(`📷 MessageController.getBase64FromMedia RECEBIDO:`, {
+        instanceId,
+        messageId,
+        convertToMp4: convertToMp4 === 'true',
+        query: req.query,
+        body: req.body,
+        headers: req.headers
+      })
+
+      // Verificar se usuário tem acesso à instância (se não for autenticação via API)
+      if (req.user?.role !== 'admin' && req.user?.id) {
+        const instance = await Instance.findById(instanceId)
+        if (!instance || instance.user_id !== req.user.id) {
+          console.log(`❌ Instância não encontrada ou sem permissão: ${instanceId}`)
+          return res.status(404).json({ error: 'Instância não encontrada' })
+        }
+      }
+
+      // Buscar instância para obter o nome para a Evolution API
+      const instance = await Instance.findById(instanceId)
+      
+      if (!instance) {
+        return res.status(404).json({ error: 'Instância não encontrada' })
+      }
+      
+      console.log(`🔍 Dados da instância:`, {
+        id: instance.id,
+        name: instance.name, 
+        evolution_instance_id: instance.evolution_instance_id
+      })
+
+      try {
+        console.log(`📝 Verificando formatação do messageId: "${messageId}"`)
+        
+        // Determinar se deve converter para MP4 com base no parâmetro da query
+        const shouldConvertToMp4 = req.query.convertToMp4 === 'true'
+        console.log(`🎬 Converter para MP4: ${shouldConvertToMp4}`)
+        
+        // Fazer chamada para Evolution API usando evolution_instance_id
+        const base64Data = await evolutionApi.getBase64FromMediaMessage(
+          instance.evolution_instance_id, 
+          messageId,
+          shouldConvertToMp4
+        )
+        
+        console.log(`📷 Base64 obtido com sucesso da Evolution API para messageId: ${messageId}`)
+        
+        res.json(base64Data)
+      } catch (evolutionError) {
+        console.error('Erro na Evolution API:', evolutionError)
+        
+        if (evolutionError.response?.status === 404) {
+          return res.status(404).json({ error: 'Mensagem ou mídia não encontrada' })
+        }
+        
+        return res.status(500).json({ 
+          error: 'Erro ao obter mídia da Evolution API',
+          details: evolutionError.message 
+        })
+      }
+    } catch (error) {
+      console.error('Erro ao obter base64 da mídia:', error)
       res.status(500).json({ error: 'Erro interno do servidor' })
     }
   }

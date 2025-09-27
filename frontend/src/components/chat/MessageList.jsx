@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import Loading from '../common/Loading';
+import MediaMessage from './MediaMessage';
+import LocationMessage from './LocationMessage';
 
 const MessageList = () => {
   const { state, loadMessages } = useApp();
@@ -198,25 +200,66 @@ const MessageList = () => {
       )}
 
       <div className="space-y-4 flex-1" style={{ minHeight: 'fit-content' }}>
-        {messages.map((message, index) => (
-          <div key={message.id || `msg-${index}`} className={`flex ${message.fromMe ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-              message.fromMe 
-                ? 'bg-green-500 text-white' 
-                : 'bg-white text-gray-900 border'
-            }`}>
-              {message.source === 'webhook' && (
-                <div className="text-xs mb-1 font-light text-gray-100">
-                  {message.fromMe ? 'Você' : message.pushName || 'Contato'}
-                </div>
-              )}
-              <p className="text-sm">{message.content || 'Mensagem sem conteúdo'}</p>
-              <p className="text-xs mt-1 opacity-75">
-                {message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : 'Agora'}
-              </p>
+        {messages.map((message, index) => {
+          const normalizedType = (message.messageType || '').toString().toLowerCase();
+          const isLocationMessage = normalizedType === 'location' || normalizedType === 'locationmessage';
+
+          const bubbleClasses = isLocationMessage
+            ? 'max-w-sm lg:max-w-lg w-full sm:w-[24rem] px-0 py-0 bg-transparent border-none shadow-none text-gray-900'
+            : `max-w-xs lg:max-w-md px-4 py-2 rounded-lg w-fit ${
+                message.fromMe
+                  ? 'bg-green-500 text-white'
+                  : 'bg-white text-gray-900 border'
+              }`;
+
+          const senderLabel = message.source === 'webhook'
+            ? (message.fromMe ? 'Você' : (message.pushName || 'Contato'))
+            : null;
+
+          return (
+            <div key={message.id || `msg-${index}`} className={`flex ${message.fromMe ? 'justify-end' : 'justify-start'}`}>
+              <div className={`${bubbleClasses} ${isLocationMessage ? 'rounded-2xl' : ''}`}>
+                {senderLabel && !isLocationMessage && (
+                  <div className={`text-xs mb-1 font-light ${message.fromMe ? 'text-emerald-50/90' : 'text-gray-400'}`}>
+                    {senderLabel}
+                  </div>
+                )}
+
+                {isLocationMessage ? (
+                  <div className="space-y-2">
+                    {senderLabel && (
+                      <div className="text-xs font-medium text-gray-400">
+                        {senderLabel}
+                      </div>
+                    )}
+                    <LocationMessage
+                      message={message}
+                      isFromMe={message.fromMe}
+                      timestamp={message.timestamp}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    {(message.messageType === 'imageMessage' || 
+                      message.messageType === 'videoMessage' || 
+                      message.messageType === 'documentMessage' ||
+                      message.messageType === 'audioMessage' ||
+                      message.messageType === 'sticker' ||
+                      message.messageType === 'stickerMessage') ? (
+                      <MediaMessage message={message} />
+                    ) : (
+                      <p className="text-sm">{message.content || 'Mensagem sem conteúdo'}</p>
+                    )}
+
+                    <p className="text-xs mt-1 opacity-75">
+                      {message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : 'Agora'}
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

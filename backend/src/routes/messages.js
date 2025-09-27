@@ -28,6 +28,10 @@ router.get(
   '/:instanceId/messages/:messageId/media',
   MessageController.downloadMedia
 )
+router.post(
+  '/:instanceId/messages/:messageId/base64',
+  MessageController.getBase64FromMedia
+)
 router.delete(
   '/:instanceId/messages/:messageId',
   MessageController.deleteMessage

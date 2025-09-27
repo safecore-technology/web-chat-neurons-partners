@@ -223,6 +223,7 @@ class NotificationService {
         case 'document':
           return '📄 Documento'
         case 'sticker':
+        case 'stickerMessage':
           return '😄 Figurinha'
         case 'location':
           return '📍 Localização'

@@ -243,8 +243,12 @@ class WebhookController {
       console.log(`💬 Timestamp: ${msg.messageTimestamp}, Type: ${this.getMessageType(msg.message)}`)
       
       // Processar dados da mensagem para o formato esperado pelo frontend
-      const messageType = this.getMessageType(msg.message)
-      const content = this.extractMessageContent(msg.message)
+      const locationMetadata = this.getLocationData(msg.message)
+      const rawMessageType = locationMetadata
+        ? 'location'
+        : msg.messageType || this.getMessageType(msg.message)
+      const messageType = this.normalizeMessageType(rawMessageType)
+      const content = this.extractMessageContent(msg.message, locationMetadata)
       
       // Normalizar o JID para obter o chatId
       let chatId = msg.key.remoteJid
@@ -259,12 +263,19 @@ class WebhookController {
         fromMe: msg.key.fromMe,
         chatId: chatId,
         remoteJid: msg.key.remoteJid,
-        messageType: messageType,
-        content: content,
+        messageType,
+        content,
         timestamp: new Date(msg.messageTimestamp * 1000).toISOString(),
         status: msg.key.fromMe ? 'sent' : 'received',
         pushName: msg.pushName || chatId,
-        source: 'webhook'
+        source: 'webhook',
+        mediaPath: this.getMediaPath(msg.message),
+        mediaMimeType: this.getMediaMimeType(msg.message),
+        message: msg.message || null,
+        location: locationMetadata,
+        mapsUrl: locationMetadata?.url || null,
+        locationThumbnail: locationMetadata?.thumbnail || null,
+        sticker: this.getStickerData(msg.message)
       }
       
       // Emitir mensagem via Socket.IO para frontend
@@ -298,7 +309,7 @@ class WebhookController {
   }
   
   // Helper para extrair conteúdo da mensagem
-  extractMessageContent(message) {
+  extractMessageContent(message, locationMetadata = null) {
     if (!message) return '';
     
     if (message.conversation) return message.conversation;
@@ -307,11 +318,105 @@ class WebhookController {
     if (message.videoMessage) return message.videoMessage.caption || 'Vídeo';
     if (message.audioMessage) return 'Áudio';
     if (message.documentMessage) return message.documentMessage.fileName || 'Documento';
-    if (message.stickerMessage) return 'Sticker';
-    if (message.locationMessage) return 'Localização';
+  if (message.stickerMessage) return '😄 Sticker';
+    if (message.locationMessage) {
+      if (locationMetadata) {
+        if (locationMetadata.label) {
+          return `📍 ${locationMetadata.label}`;
+        }
+
+        if (typeof locationMetadata.latitude === 'number' && typeof locationMetadata.longitude === 'number') {
+          return `📍 ${locationMetadata.latitude.toFixed(6)}, ${locationMetadata.longitude.toFixed(6)}`;
+        }
+      }
+
+      const lat = message.locationMessage.degreesLatitude ?? message.locationMessage.latitude;
+      const lon = message.locationMessage.degreesLongitude ?? message.locationMessage.longitude;
+
+      if (typeof lat === 'number' && typeof lon === 'number') {
+        return `📍 ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+      }
+
+      return '📍 Localização';
+    }
     if (message.contactMessage) return message.contactMessage.displayName || 'Contato';
     
     return 'Mensagem';
+  }
+
+  getMediaPath(message) {
+    if (!message) return null;
+
+    if (message.imageMessage?.url) return message.imageMessage.url;
+    if (message.videoMessage?.url) return message.videoMessage.url;
+    if (message.audioMessage?.url) return message.audioMessage.url;
+    if (message.documentMessage?.url) return message.documentMessage.url;
+    if (message.stickerMessage?.url) return message.stickerMessage.url;
+
+    return null;
+  }
+
+  getMediaMimeType(message) {
+    if (!message) return null;
+
+    if (message.imageMessage?.mimetype) return message.imageMessage.mimetype;
+    if (message.videoMessage?.mimetype) return message.videoMessage.mimetype;
+    if (message.audioMessage?.mimetype) return message.audioMessage.mimetype;
+    if (message.documentMessage?.mimetype) return message.documentMessage.mimetype;
+    if (message.stickerMessage?.mimetype) return message.stickerMessage.mimetype || 'image/webp';
+
+    return null;
+  }
+
+  getStickerData(message) {
+    const sticker = message?.stickerMessage;
+    if (!sticker) return null;
+
+    return {
+      isAnimated: Boolean(sticker.isAnimated),
+      isLottie: Boolean(sticker.isLottie),
+      mimetype: sticker.mimetype || 'image/webp',
+      fileSha256: sticker.fileSha256 || null,
+      fileEncSha256: sticker.fileEncSha256 || null,
+      mediaKey: sticker.mediaKey || null,
+      fileLength: sticker.fileLength || null,
+      directPath: sticker.directPath || null
+    };
+  }
+
+  normalizeMessageType(messageType) {
+    if (!messageType) return 'text';
+
+    if (messageType === 'stickerMessage') return 'sticker';
+
+    return messageType;
+  }
+
+  getLocationData(message) {
+    const location = message?.locationMessage;
+    if (!location) return null;
+
+    const latitude = location.degreesLatitude ?? location.latitude ?? location.lat ?? null;
+    const longitude = location.degreesLongitude ?? location.longitude ?? location.lng ?? null;
+
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      return null;
+    }
+
+    const label = location.name || location.address || location.caption || location.description || null;
+    const thumbnail = location.jpegThumbnail || null;
+    const url = `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+    return {
+      latitude,
+      longitude,
+      label,
+      thumbnail,
+      url,
+      address: location.address || null,
+      name: location.name || null,
+      description: location.caption || location.description || null
+    };
   }
 
   // Atualizar status de mensagens

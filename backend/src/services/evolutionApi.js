@@ -425,7 +425,7 @@ class EvolutionAPIService {
       payload.limit = limit;
 
       const response = await this.api.post(`/chat/findMessages/${instanceName}`, payload);
-      
+      console.log(`📨 Mensagens obtidas da Evolution API - Chat: ${chatId}, Página: ${page}, Offset: ${offset}, Limite: ${limit}, Total:`, response);
       return response.data;
     } catch (error) {
       console.error(
@@ -574,6 +574,66 @@ class EvolutionAPIService {
     }
   }
 
+  // Formatar messageId para o formato esperado pela Evolution API
+  formatMessageId(messageId) {
+    if (!messageId) return '';
+    
+    // Se o ID já estiver no formato correto (sem traços, apenas letras e números)
+    if (/^[A-Z0-9]+$/.test(messageId)) {
+      return messageId;
+    }
+    
+    // Se tiver traços, removê-los
+    return messageId.replace(/-/g, '');
+  }
+  
+  // Obter base64 de mensagem de mídia
+  async getBase64FromMediaMessage(instanceName, messageId, convertToMp4 = false) {
+    try {
+      // Formatar o messageId
+      const formattedMessageId = this.formatMessageId(messageId);
+      
+      console.log(`📷 Obtendo base64 da Evolution API - Instance: ${instanceName}`)
+      console.log(`📝 MessageId original: ${messageId}`)
+      console.log(`📝 MessageId formatado: ${formattedMessageId}`)
+      console.log(`🎬 ConvertToMp4: ${convertToMp4}`)
+      
+      // Verificar logs completos
+      console.log(`📍 URL completa: ${this.baseURL}/chat/getBase64FromMediaMessage/${instanceName}`)
+      
+      const payload = {
+        message: {
+          key: {
+            id: formattedMessageId
+          }
+        },
+        convertToMp4: convertToMp4
+      };
+      
+      console.log(`📦 Payload enviado:`, JSON.stringify(payload, null, 2))
+      
+      const response = await this.api.post(`/chat/getBase64FromMediaMessage/${instanceName}`, payload)
+      
+      console.log(`✅ Base64 obtido com sucesso da Evolution API`)
+      console.log(`📊 Status da resposta:`, response.status)
+      console.log(`🔑 Chaves na resposta:`, Object.keys(response.data))
+      
+      return response.data
+    } catch (error) {
+      console.error('❌ Erro ao obter base64 da Evolution API:', {
+        message: error.message,
+        status: error.response?.status,
+        data: JSON.stringify(error.response?.data || {}, null, 2),
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          headers: error.config?.headers,
+          data: error.config?.data
+        }
+      })
+      throw error
+    }
+  }
 
 }
 

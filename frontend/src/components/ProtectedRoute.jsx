@@ -6,14 +6,17 @@ import Loading from './common/Loading';
 const ProtectedRoute = ({ children }) => {
   const { user, isAuthenticated, loading, iframeMode } = useAuth();
 
-  // console.log('🛡️ ProtectedRoute - Estado atual:')
-  // console.log('🔍 loading:', loading)
-  // console.log('🔍 isAuthenticated:', isAuthenticated)
-  // console.log('🔍 iframeMode:', iframeMode)
-  // console.log('🔍 user:', !!user)
+  console.log('🛡️ ProtectedRoute - Estado atual:')
+  console.log('🔍 loading:', loading)
+  console.log('🔍 isAuthenticated:', isAuthenticated)
+  console.log('🔍 iframeMode:', iframeMode)
+  console.log('🔍 user:', !!user)
 
   // Detectar se estamos em iframe mode pela URL (fallback)
   const isIframeByUrl = window.location.search.includes('iframe=true')
+  console.log('🔍 URL atual:', window.location.href)
+  console.log('🔍 Query string:', window.location.search)
+  console.log('🔍 isIframeByUrl:', isIframeByUrl)
   
   // Mostrar loading apenas se não estivermos em iframe mode
   if (loading && !iframeMode && !isIframeByUrl) {
@@ -29,7 +32,7 @@ const ProtectedRoute = ({ children }) => {
 
   // Se estiver em modo iframe ou URL contém iframe=true, permitir acesso
   if (iframeMode || isIframeByUrl) {
-    // console.log('🖼️ Modo iframe detectado, permitindo acesso')
+    console.log('🖼️ Modo iframe detectado, permitindo acesso')
     return children;
   }
 

@@ -302,6 +302,15 @@ class ApiService {
     return response.data
   }
 
+  // Obter mídia em base64 da Evolution API via backend
+  async getBase64FromMediaMessage(instanceId, messageId, convertToMp4 = false) {
+    console.log(`📷 Chamando API para obter base64 - instanceId: ${instanceId}, messageId: ${messageId}, convertToMp4: ${convertToMp4}`)
+    const response = await api.post(`/api/${instanceId}/messages/${messageId}/base64`, {}, {
+      params: { convertToMp4: convertToMp4 }
+    })
+    return response.data
+  }
+
   // Dashboard
   async getDashboardStats() {
     const response = await api.get('/api/dashboard/stats')
