@@ -45,6 +45,18 @@ const ChatHeader = () => {
     console.log('Iniciando chamada de voz com:', activeChat.phone);
   };
 
+  const handleStart = () => {
+    console.log('Iniciando controle do chat para:', activeChat.id);
+  };
+
+  const handlePause = () => {
+    console.log('Pausando controle do chat para:', activeChat.id);
+  };
+
+  const handleStop = () => {
+    console.log('Parando controle do chat para:', activeChat.id);
+  };
+
   const handleSearchInChat = () => {
     // TODO: Implementar busca no chat
     console.log('Buscar no chat:', activeChat.id);
@@ -98,7 +110,37 @@ const ChatHeader = () => {
           </div>
 
           {/* Ações */}
-          <div className="flex items-center space-x-1">
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleStart}
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-100 hover:text-gray-800 transition-colors"
+              title="Iniciar controles"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M4.5 5.653c0-.88.95-1.423 1.714-.985l12.06 6.847a1.125 1.125 0 010 1.97l-12.06 6.848A1.125 1.125 0 014.5 18.348V5.652z" clipRule="evenodd" />
+              </svg>
+              <span>Iniciar</span>
+            </button>
+            <button
+              onClick={handlePause}
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-100 hover:text-gray-800 transition-colors"
+              title="Pausar controles"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M6.75 5.625c-.621 0-1.125.504-1.125 1.125v10.5c0 .621.504 1.125 1.125 1.125h1.5c.621 0 1.125-.504 1.125-1.125v-10.5c0-.621-.504-1.125-1.125-1.125h-1.5zm6 0c-.621 0-1.125.504-1.125 1.125v10.5c0 .621.504 1.125 1.125 1.125h1.5c.621 0 1.125-.504 1.125-1.125v-10.5c0-.621-.504-1.125-1.125-1.125h-1.5z" clipRule="evenodd" />
+              </svg>
+              <span>Pausar</span>
+            </button>
+            <button
+              onClick={handleStop}
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-100 hover:text-gray-800 transition-colors"
+              title="Parar controles"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="6" y="6" width="12" height="12" rx="1.5" />
+              </svg>
+              <span>Parar</span>
+            </button>
             {/* Chamada de Vídeo */}
             {/* <button
               onClick={handleVideoCall}

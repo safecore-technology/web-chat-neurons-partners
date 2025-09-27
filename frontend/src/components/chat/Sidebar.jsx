@@ -238,7 +238,7 @@ const Sidebar = () => {
               src={state.currentInstance?.profilePictureUrl || state.user?.avatar}
               name={state.currentInstance?.profileName || state.user?.name || 'Usuário'}
               size="md"
-              status={state.user?.status}
+              //status={state.user?.status}
             />
             <div>
               <h2 className="font-semibold text-gray-900">

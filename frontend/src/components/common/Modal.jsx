@@ -10,6 +10,8 @@ const Modal = ({
   closeOnOverlayClick = true,
   className = '',
   overlayClassName = '',
+  bodyClassName = '',
+  fullscreen = false,
   ...props 
 }) => {
   // Tamanhos do modal
@@ -52,27 +54,27 @@ const Modal = ({
   // Não renderizar se não estiver aberto
   if (!isOpen) return null;
 
+  const containerClasses = fullscreen
+    ? `fixed inset-0 z-50 flex flex-col ${overlayClassName}`
+    : `fixed inset-0 z-50 flex items-center justify-center p-4 ${overlayClassName}`
+
+  const panelClasses = fullscreen
+    ? `relative bg-white shadow-xl w-full h-full max-h-full transform transition-all flex flex-col overflow-hidden rounded-none ${className}`
+    : `relative bg-white rounded-lg shadow-xl w-full ${sizes[size]} transform transition-all overflow-hidden flex flex-col ${className}`
+
   return (
     <div 
-      className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${overlayClassName}`}
+      className={containerClasses}
       onClick={handleOverlayClick}
     >
       {/* Overlay */}
       <div className="absolute inset-0 bg-black bg-opacity-50 transition-opacity" />
       
       {/* Modal */}
-      <div 
-        className={`
-          relative bg-white rounded-lg shadow-xl w-full 
-          ${sizes[size]} 
-          transform transition-all
-          ${className}
-        `}
-        {...props}
-      >
+      <div className={panelClasses} {...props}>
         {/* Header */}
         {(title || showCloseButton) && (
-          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
             {title && (
               <h3 className="text-lg font-semibold text-gray-900">
                 {title}
@@ -98,7 +100,7 @@ const Modal = ({
         )}
 
         {/* Content */}
-        <div className="p-4">
+        <div className={`p-4 ${fullscreen ? 'flex-1 overflow-y-auto' : ''} ${bodyClassName}`}>
           {children}
         </div>
       </div>

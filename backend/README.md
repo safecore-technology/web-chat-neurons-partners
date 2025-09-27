@@ -102,6 +102,9 @@ npm start
 - `GET /api/:instanceId/chats/:chatId/messages` - Listar mensagens
 - `POST /api/:instanceId/chats/:chatId/messages/text` - Enviar texto
 - `POST /api/:instanceId/chats/:chatId/messages/media` - Enviar mídia
+- `POST /api/:instanceId/messages/send-media` - Enviar mídia (URL/base64)
+- `POST /api/:instanceId/messages/send-audio` - Enviar áudio/voz (URL/base64)
+- `POST /api/:instanceId/messages/send-sticker` - Enviar figurinha (URL/base64)
 - `GET /api/:instanceId/messages/search` - Buscar mensagens
 - `GET /api/:instanceId/messages/:messageId/media` - Download mídia
 

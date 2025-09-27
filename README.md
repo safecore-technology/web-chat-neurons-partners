@@ -180,7 +180,8 @@ REACT_APP_APP_NAME=WhatsApp Web
 - Lista de chats aparecerá automaticamente após sincronização
 - Clique em um chat para abrir a conversa
 - Digite mensagens normalmente
-- Arraste arquivos para enviar mídia
+- Use o botão "+" ao lado do campo de mensagem para anexar documentos, fotos/vídeos, áudios e figurinhas
+- Arraste e solte arquivos para enviar mídia rapidamente
 - Use @ para mencionar em grupos
 
 ### 4. Funcionalidades Avançadas
@@ -189,6 +190,17 @@ REACT_APP_APP_NAME=WhatsApp Web
 - **Arquivar**: Clique com botão direito no chat
 - **Fixar**: Use o ícone de alfinete
 - **Dashboard**: Veja estatísticas e saúde das instâncias
+
+#### Envio de mídia suportado
+
+A partir desta versão a aplicação consome os endpoints oficiais da Evolution API para envio de:
+
+- 📄 Documentos (`sendMedia` com `mediatype=document`)
+- 🖼️ Imagens e 🎞️ vídeos (`sendMedia` com `mediatype=image|video`)
+- 🎧 Áudios e mensagens de voz (`sendWhatsAppAudio`)
+- 😄 Figurinhas (`sendSticker`)
+
+Basta escolher o tipo no menu de anexos, selecionar o arquivo (URL/base64 é gerado automaticamente) e a mensagem é enviada pela Evolution API mantendo o histórico no chat.
 
 ## 🔒 Segurança
 

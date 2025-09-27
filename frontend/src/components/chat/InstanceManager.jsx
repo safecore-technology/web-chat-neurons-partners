@@ -119,161 +119,174 @@ const InstanceManager = ({ isOpen, onClose }) => {
         onClose={onClose}
         title="Gerenciar Instâncias"
         size="lg"
+        fullscreen
+        bodyClassName="flex flex-col h-full"
       >
-        <div className="space-y-4">
-          <div className="text-sm text-gray-600 mb-4">
-            Gerencie suas instâncias do WhatsApp. Você pode desconectar, deletar ou recriar instâncias conforme necessário.
-          </div>
+        <div className="text-sm text-gray-600">
+          Gerencie suas instâncias do WhatsApp. Você pode desconectar, deletar ou recriar instâncias conforme necessário.
+        </div>
 
+        <div className="mt-4 flex-1 overflow-y-auto pr-1">
           {state.instances.length === 0 ? (
-            <div className="text-center py-8">
+            <div className="h-full flex flex-col items-center justify-center text-center py-10 px-4">
               <div className="text-gray-400 mb-4">
-                <svg className="mx-auto w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="mx-auto w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2M4 13h2m13-4h-2m-5 8V9.5" />
                 </svg>
               </div>
-              <p className="text-gray-500">Nenhuma instância encontrada</p>
+              <p className="text-gray-500 text-sm sm:text-base">
+                Nenhuma instância encontrada
+              </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 pb-6">
               {state.instances.map((instance) => (
                 <div
                   key={instance.id}
-                  className={`border rounded-lg p-4 ${
+                  className={`border rounded-lg p-4 transition-colors ${
                     state.currentInstance?.id === instance.id ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-3">
-                        {/* Avatar do perfil */}
-                        <div className="flex-shrink-0">
-                          {instance.profilePictureUrl ? (
-                            <img
-                              src={instance.profilePictureUrl}
-                              alt="Avatar"
-                              className="w-10 h-10 rounded-full border-2 border-gray-200"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
-                              <svg className="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                              </svg>
-                            </div>
-                          )}
+                  {/* Header row with avatar and basic info */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex-shrink-0">
+                      {instance.profilePictureUrl ? (
+                        <img
+                          src={instance.profilePictureUrl}
+                          alt="Avatar"
+                          className="w-12 h-12 rounded-full border-2 border-gray-200"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center">
+                          <svg className="w-6 h-6 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                          </svg>
                         </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center space-x-2">
-                            <h3 className="font-medium text-gray-900 truncate">
-                              {instance.name}
-                            </h3>
-                            {state.currentInstance?.id === instance.id && (
-                              <span className="flex-shrink-0 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                                Ativa
-                              </span>
-                            )}
-                            <span className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(instance.status)}`}>
-                              {getStatusText(instance.status, instance.orphaned)}
-                            </span>
-                          </div>
-                          
-                          {/* Nome do perfil se disponível */}
-                          {instance.profileName && (
-                            <div className="text-sm text-gray-700 mt-1 truncate">
-                              👤 {instance.profileName}
-                            </div>
-                          )}
-                          
-                          {/* Número do telefone */}
-                          <div className="text-sm text-gray-500 mt-1">
-                            {instance.ownerJid ? (
-                              <span>📱 {instance.ownerJid.replace('@s.whatsapp.net', '')}</span>
-                            ) : instance.phone ? (
-                              <span>📱 {instance.phone}</span>
-                            ) : (
-                              <span>📱 Número não vinculado</span>
-                            )}
-                          </div>
-                          
-                          {instance.orphaned && (
-                            <div className="text-xs text-red-600 mt-1">
-                              ⚠️ Instância não encontrada no servidor
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      )}
                     </div>
 
-                    <div className="flex items-center space-x-2">
-                      {/* Selecionar instância */}
-                      {state.currentInstance?.id !== instance.id && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => selectInstance(instance)}
-                          disabled={loading === instance.id}
-                        >
-                          Selecionar
-                        </Button>
-                      )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-semibold text-gray-900 text-base truncate">
+                          {instance.name}
+                        </h3>
+                        {state.currentInstance?.id === instance.id && (
+                          <span className="flex-shrink-0 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">
+                            Ativa
+                          </span>
+                        )}
+                      </div>
+                      
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(instance.status)}`}>
+                        {getStatusText(instance.status, instance.orphaned)}
+                      </span>
+                    </div>
+                  </div>
 
-                      {/* Recriar se órfã */}
-                      {instance.orphaned && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => handleRecreate(instance.id)}
-                          loading={loading === instance.id}
-                          disabled={loading === instance.id}
-                        >
-                          Recriar
-                        </Button>
-                      )}
+                  {/* Instance details */}
+                  <div className="space-y-2 mb-4">
+                    {instance.profileName && (
+                      <div className="text-sm text-gray-700 flex items-center gap-2">
+                        <span className="text-gray-400">👤</span>
+                        <span className="truncate">{instance.profileName}</span>
+                      </div>
+                    )}
+                    
+                    <div className="text-sm text-gray-500 flex items-center gap-2">
+                      <span className="text-gray-400">📱</span>
+                      <span className="truncate">
+                        {instance.ownerJid ? 
+                          instance.ownerJid.replace('@s.whatsapp.net', '') : 
+                          instance.phone ? 
+                            instance.phone : 
+                            'Número não vinculado'
+                        }
+                      </span>
+                    </div>
+                    
+                    {instance.orphaned && (
+                      <div className="text-xs text-red-600 flex items-center gap-2">
+                        <span>⚠️</span>
+                        <span>Instância não encontrada no servidor</span>
+                      </div>
+                    )}
+                  </div>
 
-                      {/* Desconectar se conectada */}
-                      {!instance.orphaned && (instance.status === 'connected' || instance.status === 'connecting') && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDisconnect(instance.id)}
-                          loading={loading === instance.id}
-                          disabled={loading === instance.id}
-                        >
-                          Desconectar
-                        </Button>
-                      )}
-
-                      {/* Deletar */}
+                  {/* Action buttons */}
+                  <div className="flex flex-wrap gap-2">
+                    {/* Selecionar instância */}
+                    {state.currentInstance?.id !== instance.id && (
                       <Button
-                        variant="danger"
+                        variant="outline"
                         size="sm"
-                        onClick={() => setConfirmDelete(instance.id)}
+                        onClick={() => selectInstance(instance)}
                         disabled={loading === instance.id}
                       >
-                        Deletar
+                        Selecionar
                       </Button>
-                    </div>
+                    )}
+
+                    {/* Recriar se órfã */}
+                    {instance.orphaned && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleRecreate(instance.id)}
+                        loading={loading === instance.id}
+                        disabled={loading === instance.id}
+                      >
+                        Recriar
+                      </Button>
+                    )}
+
+                    {/* Desconectar se conectada */}
+                    {!instance.orphaned && (instance.status === 'connected' || instance.status === 'connecting') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDisconnect(instance.id)}
+                        loading={loading === instance.id}
+                        disabled={loading === instance.id}
+                      >
+                        Desconectar
+                      </Button>
+                    )}
+
+                    {/* Deletar */}
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setConfirmDelete(instance.id)}
+                      disabled={loading === instance.id}
+                    >
+                      Deletar
+                    </Button>
                   </div>
                 </div>
               ))}
             </div>
           )}
+        </div>
 
-          <div className="flex justify-between items-center pt-4 border-t">
-            <Button
-              variant="primary"
-              onClick={handleSyncData}
-              loading={loading === 'sync'}
-              disabled={loading === 'sync'}
-            >
-              Sincronizar Dados
-            </Button>
-            
-            <Button variant="outline" onClick={onClose}>
-              Fechar
-            </Button>
-          </div>
+        <div className="pt-4 border-t flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="sm:w-auto"
+            fullWidth
+          >
+            Fechar
+          </Button>
+
+          <Button
+            variant="primary"
+            onClick={handleSyncData}
+            loading={loading === 'sync'}
+            disabled={loading === 'sync'}
+            fullWidth
+          >
+            Sincronizar Dados
+          </Button>
         </div>
       </Modal>
 

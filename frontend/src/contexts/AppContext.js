@@ -1748,6 +1748,333 @@ export function AppProvider({ children }) {
     })
   }
 
+  const getCurrentChatIdentifier = () => {
+    const chat = state.currentChat
+    if (!chat) return null
+
+    if (chat.chatId) return chat.chatId
+    if (chat.phone) return chat.phone
+
+    if (chat.remoteJid && typeof chat.remoteJid === 'string') {
+      const [number] = chat.remoteJid.split('@')
+      if (number) {
+        return number
+      }
+    }
+
+    return chat.id || null
+  }
+
+  const buildOutgoingMessage = ({
+    messageId,
+    messageType,
+    content,
+    status = 'sent',
+    mediaMimeType = null,
+    mediaPath = null,
+    fileName = null,
+    messagePayload = null,
+    timestamp,
+    metadata = {},
+    seconds = null
+  }) => {
+    const finalTimestamp = timestamp || new Date().toISOString()
+    const identifier = getCurrentChatIdentifier()
+    const sanitizedMetadata = { ...metadata }
+
+    if (seconds !== null && seconds !== undefined) {
+      sanitizedMetadata.durationSeconds = sanitizedMetadata.durationSeconds ?? seconds
+    }
+
+    return {
+      id: messageId || `local-${Date.now()}`,
+      messageId: messageId || `local-${Date.now()}`,
+      fromMe: true,
+      content,
+      messageType,
+      timestamp: finalTimestamp,
+      status,
+      mediaMimeType,
+      mediaPath,
+      fileName,
+      message: messagePayload,
+      source: 'client',
+      metadata: sanitizedMetadata,
+      seconds: seconds ?? sanitizedMetadata.durationSeconds ?? undefined,
+      Contact: {
+        id: state.currentChat?.id || identifier,
+        name: state.currentChat?.name || state.currentChat?.Contact?.name || identifier,
+        phone: state.currentChat?.phone || identifier
+      }
+    }
+  }
+
+  const sendMessage = async (text, options = {}) => {
+    const trimmedMessage = text?.trim()
+
+    if (!trimmedMessage) {
+      return
+    }
+
+    const instanceId = state.currentInstance?.id
+    const chatIdentifier = getCurrentChatIdentifier()
+
+    if (!instanceId || !chatIdentifier) {
+      notificationService.showError('Selecione uma conversa conectada para enviar mensagens')
+      throw new Error('Instância ou chat não selecionados')
+    }
+
+    try {
+      const payload = {
+        number: chatIdentifier,
+        text: trimmedMessage,
+        chatId: chatIdentifier
+      }
+
+      if (typeof options.delay === 'number') {
+        payload.delay = options.delay
+      }
+
+      if (typeof options.linkPreview === 'boolean') {
+        payload.linkPreview = options.linkPreview
+      }
+
+      if (typeof options.mentionsEveryOne === 'boolean') {
+        payload.mentionsEveryOne = options.mentionsEveryOne
+      }
+
+      if (Array.isArray(options.mentioned) && options.mentioned.length > 0) {
+        payload.mentioned = options.mentioned
+      }
+
+      if (options.quoted) {
+        payload.quoted = options.quoted
+      }
+
+      if (options.quotedMessageId) {
+        payload.quotedMessageId = options.quotedMessageId
+      }
+
+      const response = await apiService.sendTextMessage(
+        instanceId,
+        payload
+      )
+
+      const evolution = response?.evolution || {}
+      const messageId =
+        evolution?.key?.id ||
+        response?.message?.messageId ||
+        response?.message?.id ||
+        `local-${Date.now()}`
+      const timestamp = evolution?.messageTimestamp
+        ? new Date(Number(evolution.messageTimestamp) * 1000).toISOString()
+        : new Date().toISOString()
+
+      const outgoingMessage = buildOutgoingMessage({
+        messageId,
+        messageType: 'text',
+        content: trimmedMessage,
+        status: evolution?.status || response?.status || 'sent',
+        messagePayload: evolution?.message || response?.message,
+        timestamp
+      })
+
+      dispatch({ type: appActions.ADD_MESSAGE, payload: outgoingMessage })
+      updateChatLastMessage(state.currentChat?.id || chatIdentifier, outgoingMessage)
+
+      return response
+    } catch (error) {
+      console.error('❌ Erro ao enviar mensagem de texto:', error)
+      notificationService.showError('Erro ao enviar mensagem de texto')
+      throw error
+    }
+  }
+
+  const sendMediaAttachment = async ({
+    mediatype,
+    mimetype,
+    caption = '',
+    media,
+    fileName
+  }) => {
+    const instanceId = state.currentInstance?.id
+    const number = getCurrentChatIdentifier()
+
+    if (!instanceId || !number) {
+      notificationService.showError('Selecione uma conversa conectada para enviar mídias')
+      throw new Error('Instância ou chat não selecionados')
+    }
+
+    try {
+      const payload = {
+        number,
+        mediatype,
+        mimetype,
+        caption,
+        media,
+        fileName,
+        chatId: number
+      }
+
+      const response = await apiService.sendMedia(instanceId, payload)
+      const evolution = response?.evolution || response
+      const messageData = evolution?.message || {}
+      const messageId = evolution?.key?.id || `local-${Date.now()}`
+      const timestamp = evolution?.messageTimestamp
+        ? new Date(Number(evolution.messageTimestamp) * 1000).toISOString()
+        : new Date().toISOString()
+
+      const messageTypeMap = {
+        image: 'imageMessage',
+        video: 'videoMessage',
+        document: 'documentMessage',
+        audio: 'audioMessage'
+      }
+
+      const messageType = messageTypeMap[mediatype] || mediatype
+
+      const mediaPath =
+        messageData?.imageMessage?.url ||
+        messageData?.videoMessage?.url ||
+        messageData?.documentMessage?.url ||
+        null
+
+      const outgoingMessage = buildOutgoingMessage({
+        messageId,
+        messageType,
+        content: caption || getMediaDescription(mediatype),
+        status: evolution?.status || 'sent',
+        mediaMimeType: mimetype,
+        mediaPath,
+        fileName,
+        messagePayload: messageData,
+        timestamp
+      })
+
+      dispatch({ type: appActions.ADD_MESSAGE, payload: outgoingMessage })
+      updateChatLastMessage(state.currentChat?.id || number, outgoingMessage)
+
+      return response
+    } catch (error) {
+      console.error('❌ Erro ao enviar mídia:', error)
+      notificationService.showError('Erro ao enviar mídia')
+      throw error
+    }
+  }
+
+  const sendAudioAttachment = async ({
+    audio,
+    mimetype,
+    ptt = false,
+    durationSeconds = null,
+    metadata = {},
+    fileName = null
+  }) => {
+    const instanceId = state.currentInstance?.id
+    const number = getCurrentChatIdentifier()
+
+    if (!instanceId || !number) {
+      notificationService.showError('Selecione uma conversa conectada para enviar áudios')
+      throw new Error('Instância ou chat não selecionados')
+    }
+
+    try {
+      const payload = {
+        number,
+        audio,
+        mimetype,
+        ptt,
+        chatId: number,
+        seconds: durationSeconds ?? undefined,
+        fileName: fileName || metadata?.fileName,
+        metadata: metadata && Object.keys(metadata).length ? metadata : undefined
+      }
+
+      const response = await apiService.sendWhatsAppAudio(instanceId, payload)
+      const evolution = response?.evolution || response
+      const messageData = evolution?.message || {}
+      const messageId = evolution?.key?.id || `local-${Date.now()}`
+      const timestamp = evolution?.messageTimestamp
+        ? new Date(Number(evolution.messageTimestamp) * 1000).toISOString()
+        : new Date().toISOString()
+
+      const outgoingMessage = buildOutgoingMessage({
+        messageId,
+        messageType: 'audioMessage',
+        content: ptt ? '🎤 Mensagem de Voz' : '🎵 Áudio',
+        status: evolution?.status || 'sent',
+        mediaMimeType: mimetype,
+        mediaPath: messageData?.audioMessage?.url || null,
+        messagePayload: messageData,
+        timestamp,
+        metadata: {
+          ...metadata,
+          ...(messageData?.metadata || {}),
+          ...(messageData?.audioMessage?.durationSeconds
+            ? { durationSeconds: messageData.audioMessage.durationSeconds }
+            : {})
+        },
+        fileName: fileName || metadata?.fileName || messageData?.audioMessage?.fileName || null,
+        seconds: durationSeconds ?? metadata?.durationSeconds ?? messageData?.audioMessage?.durationSeconds ?? null
+      })
+
+      dispatch({ type: appActions.ADD_MESSAGE, payload: outgoingMessage })
+      updateChatLastMessage(state.currentChat?.id || number, outgoingMessage)
+
+      return response
+    } catch (error) {
+      console.error('❌ Erro ao enviar áudio:', error)
+      notificationService.showError('Erro ao enviar áudio')
+      throw error
+    }
+  }
+
+  const sendStickerAttachment = async ({ sticker }) => {
+    const instanceId = state.currentInstance?.id
+    const number = getCurrentChatIdentifier()
+
+    if (!instanceId || !number) {
+      notificationService.showError('Selecione uma conversa conectada para enviar figurinhas')
+      throw new Error('Instância ou chat não selecionados')
+    }
+
+    try {
+      const payload = {
+        number,
+        sticker,
+        chatId: number
+      }
+
+      const response = await apiService.sendSticker(instanceId, payload)
+      const evolution = response?.evolution || response
+      const messageData = evolution?.message || {}
+      const messageId = evolution?.key?.id || `local-${Date.now()}`
+      const timestamp = evolution?.messageTimestamp
+        ? new Date(Number(evolution.messageTimestamp) * 1000).toISOString()
+        : new Date().toISOString()
+
+      const outgoingMessage = buildOutgoingMessage({
+        messageId,
+        messageType: 'stickerMessage',
+        content: '😄 Sticker',
+        status: evolution?.status || 'sent',
+        mediaMimeType: messageData?.stickerMessage?.mimetype || 'image/webp',
+        mediaPath: messageData?.stickerMessage?.url || null,
+        messagePayload: messageData,
+        timestamp
+      })
+
+      dispatch({ type: appActions.ADD_MESSAGE, payload: outgoingMessage })
+      updateChatLastMessage(state.currentChat?.id || number, outgoingMessage)
+
+      return response
+    } catch (error) {
+      console.error('❌ Erro ao enviar sticker:', error)
+      notificationService.showError('Erro ao enviar figurinha')
+      throw error
+    }
+  }
+
   // Buscar mensagens
   const searchMessages = async query => {
     if (!state.currentInstance || !query.trim()) {
@@ -2043,12 +2370,16 @@ export function AppProvider({ children }) {
   const getMediaDescription = type => {
     switch (type) {
       case 'image':
+      case 'imageMessage':
         return '📷 Imagem'
       case 'video':
+      case 'videoMessage':
         return '🎥 Vídeo'
       case 'audio':
+      case 'audioMessage':
         return '🎵 Áudio'
       case 'document':
+      case 'documentMessage':
         return '📄 Documento'
       case 'sticker':
       case 'stickerMessage':
@@ -2089,6 +2420,10 @@ export function AppProvider({ children }) {
     disconnectInstance,
     deleteInstance,
     syncInstanceData,
+    sendMessage,
+    sendMediaAttachment,
+    sendAudioAttachment,
+    sendStickerAttachment,
 
     // Dispatch direto para casos especiais
     dispatch

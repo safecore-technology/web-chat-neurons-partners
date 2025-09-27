@@ -104,7 +104,7 @@ const Avatar = ({
       {/* Status de presença */}
       {status && (
         <div className={`
-          absolute -bottom-0.5 -right-0.5 
+          absolute -bottom-0.5 -right-0.5
           ${statusSizes[size]} 
           rounded-full 
           border-2 border-white

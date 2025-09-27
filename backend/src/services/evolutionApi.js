@@ -20,6 +20,25 @@ class EvolutionAPIService {
     return new Promise(resolve => setTimeout(resolve, ms))
   }
 
+  sanitizePayload(payload = {}) {
+    return Object.entries(payload).reduce((acc, [key, value]) => {
+      if (value === undefined || value === null) {
+        return acc
+      }
+
+      if (Array.isArray(value) && value.length === 0) {
+        return acc
+      }
+
+      if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) {
+        return acc
+      }
+
+      acc[key] = value
+      return acc
+    }, {})
+  }
+
   // Criar instância
   async createInstance(instanceName, webhookUrl) {
     try {
@@ -66,6 +85,39 @@ class EvolutionAPIService {
       } else {
         console.error('Erro ao criar instância:', error.message)
       }
+      throw error
+    }
+  }
+
+  async setInstanceSettings(instanceName, settings = {}) {
+    try {
+      const defaultSettings = {
+        rejectCall: false,
+        msgCall:
+          process.env.EVOLUTION_CALL_REJECT_MESSAGE ||
+          'Este número não aceita chamadas. Por favor, envie uma mensagem.',
+        groupsIgnore: false,
+        alwaysOnline: false,
+        readMessages: false,
+        readStatus: false,
+        syncFullHistory: true
+      }
+
+      const payload = this.sanitizePayload({
+        ...defaultSettings,
+        ...settings
+      })
+
+      const response = await this.api.post(
+        `/settings/set/${instanceName}`,
+        payload
+      )
+      return response.data
+    } catch (error) {
+      console.error(
+        'Erro ao configurar settings:',
+        error.response?.data || error.message
+      )
       throw error
     }
   }
@@ -297,26 +349,13 @@ class EvolutionAPIService {
   }
 
   // Enviar mensagem de texto
-  async sendTextMessage(instanceName, number, message, quotedMessageId = null) {
+  async sendText(instanceName, payload) {
     try {
-      const data = {
-        number,
-        textMessage: {
-          text: message
-        }
-      }
-
-      if (quotedMessageId) {
-        data.quoted = {
-          key: {
-            id: quotedMessageId
-          }
-        }
-      }
+      const body = this.sanitizePayload(payload)
 
       const response = await this.api.post(
         `/message/sendText/${instanceName}`,
-        data
+        body
       )
       return response.data
     } catch (error) {
@@ -363,6 +402,60 @@ class EvolutionAPIService {
     } catch (error) {
       console.error(
         'Erro ao enviar mídia:',
+        error.response?.data || error.message
+      )
+      throw error
+    }
+  }
+
+  async sendMedia(instanceName, payload) {
+    try {
+      const body = this.sanitizePayload(payload)
+
+      const response = await this.api.post(
+        `/message/sendMedia/${instanceName}`,
+        body
+      )
+      return response.data
+    } catch (error) {
+      console.error(
+        'Erro ao enviar mídia (sendMedia):',
+        error.response?.data || error.message
+      )
+      throw error
+    }
+  }
+
+  async sendWhatsAppAudio(instanceName, payload) {
+    try {
+      const body = this.sanitizePayload(payload)
+
+      const response = await this.api.post(
+        `/message/sendWhatsAppAudio/${instanceName}`,
+        body
+      )
+      return response.data
+    } catch (error) {
+      console.error(
+        'Erro ao enviar áudio:',
+        error.response?.data || error.message
+      )
+      throw error
+    }
+  }
+
+  async sendSticker(instanceName, payload) {
+    try {
+      const body = this.sanitizePayload(payload)
+
+      const response = await this.api.post(
+        `/message/sendSticker/${instanceName}`,
+        body
+      )
+      return response.data
+    } catch (error) {
+      console.error(
+        'Erro ao enviar sticker:',
         error.response?.data || error.message
       )
       throw error

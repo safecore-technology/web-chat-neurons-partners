@@ -355,75 +355,122 @@ class MessageController {
     };
   }
 
-  // Enviar mensagem de texto
+  static getEvolutionInstanceName(instance) {
+    if (!instance) return null;
+
+    return (
+      instance.evolution_instance_id ||
+      instance.evolutionInstanceId ||
+      instance.evolution_instanceId ||
+      instance.evolutioninstanceid ||
+      instance.name
+    );
+  }
+
+  // Enviar mensagem de texto via Evolution API
   async sendTextMessage(req, res) {
     try {
       const { instanceId, chatId } = req.params
-      const { message, quotedMessageId } = req.body
+      const {
+        number: bodyNumber,
+        text,
+        message,
+        delay,
+        linkPreview,
+        mentionsEveryOne,
+        mentioned,
+        quoted,
+        quotedMessageId,
+        options = {}
+      } = req.body || {}
 
-      if (!message || message.trim() === '') {
+      const rawNumber = bodyNumber || options.number || req.body?.chatId || chatId
+      const normalizedNumber = rawNumber
+        ? String(rawNumber).split('@')[0].replace(/\s+/g, '')
+        : null
+
+      if (!normalizedNumber) {
+        return res.status(400).json({ error: 'Número do contato não informado' })
+      }
+
+      const finalText = (text ?? message ?? '').toString().trim()
+
+      if (!finalText) {
         return res.status(400).json({ error: 'Mensagem não pode estar vazia' })
       }
 
-      const instance = await Instance.findOne({
-        where: {
-          id: instanceId,
-          ...(req.user.role !== 'admin' ? { userId: req.user.id } : {})
-        }
-      })
+      const instance = await Instance.findById(instanceId)
 
       if (!instance) {
         return res.status(404).json({ error: 'Instância não encontrada' })
       }
 
-      if (instance.status !== 'connected') {
+      if (
+        req.user?.role !== 'admin' &&
+        req.user?.id &&
+        instance.user_id &&
+        instance.user_id !== req.user.id
+      ) {
+        return res.status(403).json({ error: 'Acesso negado à instância' })
+      }
+
+      if (instance.status && instance.status !== 'connected') {
         return res.status(400).json({ error: 'Instância não está conectada' })
       }
 
-      const chat = await Chat.findOne({
-        where: { id: chatId, instanceId },
-        include: [Contact]
-      })
+      const evolutionInstanceName = MessageController.getEvolutionInstanceName(instance)
 
-      if (!chat) {
-        return res.status(404).json({ error: 'Chat não encontrado' })
+      if (!evolutionInstanceName) {
+        return res.status(400).json({ error: 'Instância Evolution inválida' })
       }
 
-      // Enviar mensagem via Evolution API
-      const evolutionResponse = await evolutionApi.sendTextMessage(
-        instance.evolutionInstanceId,
-        chat.Contact.phone,
-        message,
-        quotedMessageId
+      const quotedPayload = quotedMessageId
+        ? {
+            key: {
+              id: quotedMessageId
+            }
+          }
+        : quoted
+
+      const payload = {
+        number: normalizedNumber,
+        text: finalText,
+        delay,
+        linkPreview,
+        mentionsEveryOne,
+        mentioned,
+        quoted: quotedPayload
+      }
+
+      Object.keys(payload).forEach(key => {
+        if (
+          payload[key] === undefined ||
+          payload[key] === null ||
+          (Array.isArray(payload[key]) && payload[key].length === 0) ||
+          (typeof payload[key] === 'object' && Object.keys(payload[key]).length === 0)
+        ) {
+          delete payload[key]
+        }
+      })
+
+      const evolutionResponse = await evolutionApi.sendText(
+        evolutionInstanceName,
+        payload
       )
 
-      // Salvar mensagem no banco
-      const messageRecord = await Message.create({
-        messageId: evolutionResponse.key?.id || `temp_${Date.now()}`,
-        fromMe: true,
-        chatId: chat.Contact.phone,
-        messageType: 'text',
-        content: message,
-        timestamp: new Date(),
-        status: 'sent',
-        instanceId: instance.id,
-        contactId: chat.contactId,
-        quotedMessage: quotedMessageId ? { id: quotedMessageId } : null
-      })
-
-      // Atualizar última mensagem do chat
-      await chat.update({
-        lastMessage: message,
-        lastMessageTime: new Date()
-      })
-
-      res.json({
-        message: messageRecord,
-        evolutionResponse
+      res.status(201).json({
+        number: normalizedNumber,
+        chatId: chatId || normalizedNumber,
+        text: finalText,
+        evolution: evolutionResponse
       })
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error)
-      res.status(500).json({ error: 'Erro interno do servidor' })
+      const status = error.response?.status || 500
+      res.status(status).json({
+        error: error.response?.data?.error || 'Erro ao enviar mensagem',
+        details: error.response?.data || error.message
+      })
     }
   }
 
@@ -475,8 +522,14 @@ class MessageController {
 
       // Enviar mídia via Evolution API
       const mediaPath = req.file.path
+      const evolutionInstanceName = MessageController.getEvolutionInstanceName(instance)
+
+      if (!evolutionInstanceName) {
+        return res.status(400).json({ error: 'Instância Evolution inválida' })
+      }
+
       const evolutionResponse = await evolutionApi.sendMediaMessage(
-        instance.evolutionInstanceId,
+        evolutionInstanceName,
         chat.Contact.phone,
         mediaPath,
         mediaType,
@@ -529,6 +582,259 @@ class MessageController {
     }
   }
 
+  // Enviar mídia via Evolution API (base64/URL)
+  async sendMedia(req, res) {
+    try {
+      const { instanceId } = req.params
+      const {
+        number,
+        mediatype,
+        mimetype,
+        caption = '',
+        media,
+        fileName,
+        delay,
+        linkPreview,
+        mentionsEveryOne,
+        mentioned,
+        quoted,
+        chatId
+      } = req.body || {}
+
+      if (!number || !media || !mediatype || !mimetype || !fileName) {
+        return res.status(400).json({
+          error:
+            'Campos obrigatórios ausentes. Informe number, media, mediatype, mimetype e fileName.'
+        })
+      }
+
+      const instance = await Instance.findById(instanceId)
+
+      if (!instance) {
+        return res.status(404).json({ error: 'Instância não encontrada' })
+      }
+
+      if (req.user?.role !== 'admin' && req.user?.id && instance.user_id && instance.user_id !== req.user.id) {
+        return res.status(403).json({ error: 'Acesso negado à instância' })
+      }
+
+      if (instance.status && instance.status !== 'connected') {
+        return res.status(400).json({ error: 'Instância não está conectada' })
+      }
+
+      const evolutionInstanceName = MessageController.getEvolutionInstanceName(instance)
+
+      if (!evolutionInstanceName) {
+        return res.status(400).json({ error: 'Instância Evolution inválida' })
+      }
+
+      const payload = {
+        number,
+        mediatype,
+        mimetype,
+        caption,
+        media,
+        fileName,
+        delay,
+        linkPreview,
+        mentionsEveryOne,
+        mentioned,
+        quoted
+      }
+
+      Object.keys(payload).forEach(key => {
+        if (payload[key] === undefined || payload[key] === null || (Array.isArray(payload[key]) && payload[key].length === 0)) {
+          delete payload[key]
+        }
+      })
+
+      const evolutionResponse = await evolutionApi.sendMedia(
+        evolutionInstanceName,
+        payload
+      )
+
+      res.status(201).json({
+        number,
+        chatId: chatId || number,
+        mediatype,
+        caption,
+        fileName,
+        evolution: evolutionResponse
+      })
+    } catch (error) {
+      console.error('Erro ao enviar mídia (API):', error.response?.data || error.message)
+      const status = error.response?.status || 500
+      res.status(status).json({
+        error: error.response?.data?.error || 'Erro ao enviar mídia',
+        details: error.response?.data || error.message
+      })
+    }
+  }
+
+  // Enviar áudio via Evolution API
+  async sendWhatsAppAudio(req, res) {
+    try {
+      const { instanceId } = req.params
+      const {
+        number,
+        audio,
+        mimetype,
+        ptt,
+        delay,
+        linkPreview,
+        mentionsEveryOne,
+        mentioned,
+        quoted,
+        chatId,
+        seconds,
+        fileName,
+        metadata
+      } = req.body || {}
+
+      if (!number || !audio) {
+        return res.status(400).json({
+          error: 'Campos obrigatórios ausentes. Informe number e audio.'
+        })
+      }
+
+      const instance = await Instance.findById(instanceId)
+
+      if (!instance) {
+        return res.status(404).json({ error: 'Instância não encontrada' })
+      }
+
+      if (req.user?.role !== 'admin' && req.user?.id && instance.user_id && instance.user_id !== req.user.id) {
+        return res.status(403).json({ error: 'Acesso negado à instância' })
+      }
+
+      if (instance.status && instance.status !== 'connected') {
+        return res.status(400).json({ error: 'Instância não está conectada' })
+      }
+
+      const evolutionInstanceName = MessageController.getEvolutionInstanceName(instance)
+
+      if (!evolutionInstanceName) {
+        return res.status(400).json({ error: 'Instância Evolution inválida' })
+      }
+
+      const payload = {
+        number,
+        audio,
+        mimetype,
+        ptt,
+        delay,
+        linkPreview,
+        mentionsEveryOne,
+        mentioned,
+        quoted,
+        seconds,
+        fileName,
+        metadata
+      }
+
+      Object.keys(payload).forEach(key => {
+        if (payload[key] === undefined || payload[key] === null || (Array.isArray(payload[key]) && payload[key].length === 0)) {
+          delete payload[key]
+        }
+      })
+
+      const evolutionResponse = await evolutionApi.sendWhatsAppAudio(
+        evolutionInstanceName,
+        payload
+      )
+
+      res.status(200).json({
+        number,
+        chatId: chatId || number,
+        evolution: evolutionResponse
+      })
+    } catch (error) {
+      console.error('Erro ao enviar áudio (API):', error.response?.data || error.message)
+      const status = error.response?.status || 500
+      res.status(status).json({
+        error: error.response?.data?.error || 'Erro ao enviar áudio',
+        details: error.response?.data || error.message
+      })
+    }
+  }
+
+  // Enviar sticker via Evolution API
+  async sendSticker(req, res) {
+    try {
+      const { instanceId } = req.params
+      const {
+        number,
+        sticker,
+        delay,
+        linkPreview,
+        mentionsEveryOne,
+        mentioned,
+        quoted,
+        chatId
+      } = req.body || {}
+
+      if (!number || !sticker) {
+        return res.status(400).json({
+          error: 'Campos obrigatórios ausentes. Informe number e sticker.'
+        })
+      }
+
+      const instance = await Instance.findById(instanceId)
+
+      if (!instance) {
+        return res.status(404).json({ error: 'Instância não encontrada' })
+      }
+
+      if (req.user?.role !== 'admin' && req.user?.id && instance.user_id && instance.user_id !== req.user.id) {
+        return res.status(403).json({ error: 'Acesso negado à instância' })
+      }
+
+      if (instance.status && instance.status !== 'connected') {
+        return res.status(400).json({ error: 'Instância não está conectada' })
+      }
+
+      const evolutionInstanceName = MessageController.getEvolutionInstanceName(instance)
+
+      if (!evolutionInstanceName) {
+        return res.status(400).json({ error: 'Instância Evolution inválida' })
+      }
+
+      const payload = {
+        number,
+        sticker,
+        delay,
+        linkPreview,
+        mentionsEveryOne,
+        mentioned,
+        quoted
+      }
+
+      Object.keys(payload).forEach(key => {
+        if (payload[key] === undefined || payload[key] === null || (Array.isArray(payload[key]) && payload[key].length === 0)) {
+          delete payload[key]
+        }
+      })
+
+      const evolutionResponse = await evolutionApi.sendSticker(
+        evolutionInstanceName,
+        payload
+      )
+
+      res.status(200).json({
+        number,
+        chatId: chatId || number,
+        evolution: evolutionResponse
+      })
+    } catch (error) {
+      console.error('Erro ao enviar sticker (API):', error.response?.data || error.message)
+      const status = error.response?.status || 500
+      res.status(status).json({
+        error: error.response?.data?.error || 'Erro ao enviar sticker',
+        details: error.response?.data || error.message
+      })
+    }
+  }
+
   // Sincronizar mensagens de um chat
   async syncMessages(req, res) {
     try {
@@ -556,8 +862,14 @@ class MessageController {
       }
 
       // Obter mensagens do Evolution API
+      const evolutionInstanceName = MessageController.getEvolutionInstanceName(instance)
+
+      if (!evolutionInstanceName) {
+        return res.status(400).json({ error: 'Instância Evolution inválida' })
+      }
+
       const evolutionMessages = await evolutionApi.getChatMessages(
-        instance.evolutionInstanceId,
+        evolutionInstanceName,
         chat.Contact.phone,
         limit
       )
@@ -683,8 +995,14 @@ class MessageController {
       }
 
       // Caso contrário, baixar do Evolution API
+      const evolutionInstanceName = MessageController.getEvolutionInstanceName(instance)
+
+      if (!evolutionInstanceName) {
+        return res.status(400).json({ error: 'Instância Evolution inválida' })
+      }
+
       const mediaStream = await evolutionApi.downloadMedia(
-        instance.evolutionInstanceId,
+        evolutionInstanceName,
         message.messageId
       )
 

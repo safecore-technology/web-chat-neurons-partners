@@ -53,6 +53,29 @@ class InstanceController {
         webhookUrl
       )
 
+      try {
+        await evolutionApi.setInstanceSettings(evolutionInstanceId)
+      } catch (settingsError) {
+        console.error(
+          'Erro ao configurar opções da instância:',
+          settingsError.response?.data || settingsError.message
+        )
+
+        // Tentar remover a instância criada para evitar órfãs
+        try {
+          await evolutionApi.deleteInstance(evolutionInstanceId)
+        } catch (cleanupError) {
+          console.error(
+            'Falha ao remover instância após erro de configuração:',
+            cleanupError.response?.data || cleanupError.message
+          )
+        }
+
+        return res
+          .status(500)
+          .json({ error: 'Falha ao configurar opções iniciais da instância' })
+      }
+
       // Tentar conectar automaticamente após criar e configurar webhook
       try {
         await evolutionApi.connectInstance(evolutionInstanceId)

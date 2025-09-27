@@ -261,10 +261,10 @@ class ApiService {
     return response.data
   }
 
-  async sendTextMessage(instanceId, chatId, messageData) {
+  async sendTextMessage(instanceId, payload) {
     const response = await api.post(
-      `/api/${instanceId}/chats/${chatId}/messages/text`,
-      messageData
+      `/api/${instanceId}/messages/send-text`,
+      payload
     )
     return response.data
   }
@@ -278,6 +278,30 @@ class ApiService {
           'Content-Type': 'multipart/form-data'
         }
       }
+    )
+    return response.data
+  }
+
+  async sendMedia(instanceId, payload) {
+    const response = await api.post(
+      `/api/${instanceId}/messages/send-media`,
+      payload
+    )
+    return response.data
+  }
+
+  async sendWhatsAppAudio(instanceId, payload) {
+    const response = await api.post(
+      `/api/${instanceId}/messages/send-audio`,
+      payload
+    )
+    return response.data
+  }
+
+  async sendSticker(instanceId, payload) {
+    const response = await api.post(
+      `/api/${instanceId}/messages/send-sticker`,
+      payload
     )
     return response.data
   }

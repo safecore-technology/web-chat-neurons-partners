@@ -19,9 +19,25 @@ router.post(
   MessageController.sendTextMessage
 )
 router.post(
+  '/:instanceId/messages/send-text',
+  MessageController.sendTextMessage
+)
+router.post(
   '/:instanceId/chats/:chatId/messages/media',
   upload.single('media'),
   MessageController.sendMediaMessage
+)
+router.post(
+  '/:instanceId/messages/send-media',
+  MessageController.sendMedia
+)
+router.post(
+  '/:instanceId/messages/send-audio',
+  MessageController.sendWhatsAppAudio
+)
+router.post(
+  '/:instanceId/messages/send-sticker',
+  MessageController.sendSticker
 )
 router.get('/:instanceId/messages/search', MessageController.searchMessages)
 router.get(

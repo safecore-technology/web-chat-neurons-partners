@@ -33,9 +33,13 @@ const MediaMessage = ({ message }) => {
         }
         loadMedia(false);
       } else if (message.messageType === 'audioMessage') {
-  setMediaType('audio');
-  // Obter a duração do áudio se disponível
-        const seconds = message.message?.audioMessage?.seconds || message.seconds || 0;
+	setMediaType('audio');
+	// Obter a duração do áudio se disponível
+        const seconds =
+          message.message?.audioMessage?.seconds ??
+          message.metadata?.durationSeconds ??
+          message.seconds ??
+          0;
         setAudioDuration(seconds);
         
         // Para áudio, usamos a mesma rota sem convertToMp4
