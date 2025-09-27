@@ -26,7 +26,9 @@ const Sidebar = () => {
     // Carregar chats ao montar o componente
     if (state.currentInstance) {
       // Garantir que o ID da instância seja enviado para evitar chamadas /undefined/chats
-      loadChats(state.currentInstance.id);
+      loadChats(state.currentInstance.id, {
+        showLoader: state.chats.length === 0
+      });
     }
   }, [state.currentInstance]);
   
@@ -38,7 +40,7 @@ const Sidebar = () => {
       // Recarregar a lista de chats a cada 30 segundos para garantir dados atualizados
       intervalId = setInterval(() => {
         console.log('🔄 Recarregando lista de chats automaticamente...');
-        loadChats(state.currentInstance.id);
+        loadChats(state.currentInstance.id, { showLoader: false });
       }, 30000); // 30 segundos
     }
     

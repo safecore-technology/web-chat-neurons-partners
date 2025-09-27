@@ -659,7 +659,7 @@ export function AppProvider({ children }) {
         } else {
           // Se o chat não existe, recarregar a lista completa para obter atualizações
           console.log(`🔄 [${timestamp}] Chat não encontrado na lista atual, recarregando chats...`)
-          loadChats(instanceId)
+          loadChats(instanceId, { showLoader: false })
         }
         
         // Mostrar notificação se necessário
@@ -974,9 +974,9 @@ export function AppProvider({ children }) {
                   console.log(`🧹 [${new Date().toISOString()}] Limpando ID da última instância sincronizada:`, window.lastSyncInstanceId);
                   const instanceToLoad = window.lastSyncInstanceId;
                   window.lastSyncInstanceId = null;
-                  loadChats(instanceToLoad);
+                  loadChats(instanceToLoad, { showLoader: false });
                 } else {
-                  loadChats(data.instanceId);
+                  loadChats(data.instanceId, { showLoader: false });
                 }
                 
                 // Mostrar notificação de sucesso
@@ -1041,7 +1041,7 @@ export function AppProvider({ children }) {
 
         // Recarregar dados após sincronização bem sucedida
         if (data.status === 'completed') {
-          loadChats(data.instanceId)
+          loadChats(data.instanceId, { showLoader: false })
 
           // Auto-refresh do perfil do usuário
           if (state.currentInstance?.status === 'connected') {
@@ -1187,9 +1187,15 @@ export function AppProvider({ children }) {
   }
 
   // Carregar chats apenas locais (sem sync)
-  const loadChatsLocal = async instanceId => {
-    try {
+  const loadChatsLocal = async (instanceId, options = {}) => {
+    const { showLoader } = options
+    const shouldShowLoader = showLoader ?? state.chats.length === 0
+
+    if (shouldShowLoader) {
       dispatch({ type: appActions.SET_CHAT_LOADING, payload: true })
+    }
+
+    try {
       if (!instanceId) throw new Error('instanceId ausente')
       console.log('💾 Carregando chats locais para instanceId:', instanceId)
 
@@ -1200,14 +1206,22 @@ export function AppProvider({ children }) {
     } catch (error) {
       console.error('❌ Erro ao carregar chats locais:', error)
     } finally {
-      dispatch({ type: appActions.SET_CHAT_LOADING, payload: false })
+      if (shouldShowLoader) {
+        dispatch({ type: appActions.SET_CHAT_LOADING, payload: false })
+      }
     }
   }
 
   // Carregar chats
-  const loadChats = async instanceId => {
-    try {
+  const loadChats = async (instanceId, options = {}) => {
+    const { showLoader } = options
+    const shouldShowLoader = showLoader ?? state.chats.length === 0
+
+    if (shouldShowLoader) {
       dispatch({ type: appActions.SET_CHAT_LOADING, payload: true })
+    }
+
+    try {
       if (!instanceId) throw new Error('instanceId ausente')
       console.log('🔄 Carregando chats para instanceId:', instanceId)
 
@@ -1314,7 +1328,9 @@ export function AppProvider({ children }) {
       console.error('❌ Erro ao carregar chats:', error)
       notificationService.showError('Erro ao carregar chats')
     } finally {
-      dispatch({ type: appActions.SET_CHAT_LOADING, payload: false })
+      if (shouldShowLoader) {
+        dispatch({ type: appActions.SET_CHAT_LOADING, payload: false })
+      }
     }
   }
 
