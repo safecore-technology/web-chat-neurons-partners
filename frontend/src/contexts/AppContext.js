@@ -623,7 +623,12 @@ export function AppProvider({ children }) {
           // Se não for uma mensagem enviada por mim, marcar como lida
           if (!msg.fromMe && currentInstance) {
             console.log(`📝 [${timestamp}] Marcando mensagem como lida automaticamente pois o chat está aberto`)
-            markChatAsRead(currentInstance.id, chatId)
+            const chatInfo = currentChat || {
+              id: chatId,
+              remoteJid: msg.remoteJid,
+              phone: msg.remoteJid?.includes('@') ? msg.remoteJid.split('@')[0] : chatId
+            }
+            markChatAsRead(currentInstance.id, chatInfo, [msg])
           }
         }
         
@@ -1632,11 +1637,13 @@ export function AppProvider({ children }) {
       if (state.currentInstance) {
         console.log('📱 Carregando mensagens para:', phoneNumber);
         // Sempre usar o número de telefone como identificador para API
-        await loadMessages(state.currentInstance.id, phoneNumber);
+        const messagesResponse = await loadMessages(state.currentInstance.id, phoneNumber);
+
+        const messagesToMark = messagesResponse?.messages || state.messages;
 
         // Marcar como lido se necessário
-        if (updatedChat.unreadCount > 0) {
-          markChatAsRead(state.currentInstance.id, phoneNumber);
+        if (updatedChat.unreadCount > 0 || (Array.isArray(messagesToMark) && messagesToMark.some(msg => !msg.fromMe))) {
+          markChatAsRead(state.currentInstance.id, updatedChat, messagesToMark);
         }
       } else {
         console.warn('⚠️ Nenhuma instância atual disponível');
@@ -1699,25 +1706,81 @@ export function AppProvider({ children }) {
   }
 
   // Marcar chat como lido
-  const markChatAsRead = async (instanceId, chatId) => {
+  const markChatAsRead = async (instanceId, chatInfo, messages = []) => {
+    if (!instanceId || !chatInfo) {
+      return
+    }
+
     try {
-      // Processar o chatId para garantir compatibilidade
-      let effectiveChatId = chatId;
-      
-      // Se for remoteJid no formato número@s.whatsapp.net, extrair apenas o número
-      if (typeof effectiveChatId === 'string' && effectiveChatId.includes('@s.whatsapp.net')) {
-        effectiveChatId = effectiveChatId.split('@')[0];
+      const chatObject = typeof chatInfo === 'object' ? chatInfo : null
+      const identifier = chatObject?.id ||
+        (typeof chatInfo === 'string' ? chatInfo :
+          chatObject?.chatId || chatObject?.remoteJid || chatObject?.phone)
+
+      if (!identifier) {
+        console.warn('⚠️ markChatAsRead: identificador do chat ausente', chatInfo)
+        return
       }
-      
-      console.log(`🔍 Marcando como lido - instância: ${instanceId}, chat: ${effectiveChatId}`);
-      
-      await apiService.markAsRead(instanceId, effectiveChatId);
+
+      const baseRemoteJid = (() => {
+        if (chatObject?.remoteJid) return chatObject.remoteJid
+        if (chatObject?.phone) return `${chatObject.phone}@s.whatsapp.net`
+        if (typeof chatInfo === 'string' && chatInfo.includes('@')) return chatInfo
+        if (typeof chatInfo === 'string' && /^\d+$/.test(chatInfo)) {
+          return `${chatInfo}@s.whatsapp.net`
+        }
+        if (state.currentChat?.remoteJid) return state.currentChat.remoteJid
+        if (state.currentChat?.phone) return `${state.currentChat.phone}@s.whatsapp.net`
+        return null
+      })()
+
+      const sourceMessages = Array.isArray(messages) && messages.length > 0
+        ? messages
+        : state.messages
+
+      const seenIds = new Set()
+      const formattedMessages = sourceMessages
+        .filter(msg => msg && typeof msg === 'object' && !msg.fromMe)
+        .map(msg => ({
+          remoteJid: msg.remoteJid || msg.key?.remoteJid || baseRemoteJid,
+          id: msg.messageId || msg.message_id || msg.id,
+          fromMe: Boolean(msg.fromMe)
+        }))
+        .filter(msg => {
+          if (!msg.remoteJid || !msg.id) {
+            return false
+          }
+          if (seenIds.has(msg.id)) {
+            return false
+          }
+          seenIds.add(msg.id)
+          return true
+        })
+
+      if (formattedMessages.length === 0) {
+        console.log('ℹ️ markChatAsRead: nenhuma mensagem válida para marcar como lida')
+        return
+      }
+
+      console.log('✅ Marcando mensagens como lidas:', {
+        instanceId,
+        identifier,
+        messages: formattedMessages.length
+      })
+
+      await apiService.markAsRead(instanceId, identifier, {
+        readMessages: formattedMessages
+      })
+
       dispatch({
         type: appActions.UPDATE_CHAT,
-        payload: { id: state.currentChat?.id || chatId, data: { unreadCount: 0 } }
-      });
+        payload: {
+          id: chatObject?.id || identifier,
+          data: { unreadCount: 0 }
+        }
+      })
     } catch (error) {
-      console.error('❌ Erro ao marcar como lido:', error);
+      console.error('❌ Erro ao marcar como lido:', error)
     }
   }
 

@@ -212,8 +212,12 @@ class ApiService {
     return response.data
   }
 
-  async markAsRead(instanceId, chatId) {
-    const response = await api.put(`/api/${instanceId}/chats/${chatId}/read`)
+  async markAsRead(instanceId, chatId, payload = {}) {
+    const encodedChatId = encodeURIComponent(chatId)
+    const response = await api.put(
+      `/api/${instanceId}/chats/${encodedChatId}/read`,
+      payload
+    )
     return response.data
   }
 

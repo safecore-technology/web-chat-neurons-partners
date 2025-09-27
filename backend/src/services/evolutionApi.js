@@ -529,24 +529,37 @@ class EvolutionAPIService {
     }
   }
 
-  // Marcar como lido
-  async markAsRead(instanceName, chatId) {
+  // Marcar mensagens como lidas
+  async markAsRead(instanceName, readMessages) {
     try {
-      const response = await this.api.put(
+      if (!Array.isArray(readMessages) || readMessages.length === 0) {
+        throw new Error('readMessages deve ser um array com pelo menos um item')
+      }
+
+      const normalizedMessages = readMessages
+        .map(message => ({
+          remoteJid: message.remoteJid,
+          id: message.id,
+          fromMe: Boolean(message.fromMe)
+        }))
+        .filter(message => message.remoteJid && message.id)
+
+      if (normalizedMessages.length === 0) {
+        throw new Error('Nenhuma mensagem válida informada para marcar como lida')
+      }
+
+      const payload = {
+        readMessages: normalizedMessages
+      }
+
+      const response = await this.api.post(
         `/chat/markMessageAsRead/${instanceName}`,
-        {
-          readMessages: [
-            {
-              id: chatId,
-              fromMe: false
-            }
-          ]
-        }
+        payload
       )
       return response.data
     } catch (error) {
       console.error(
-        'Erro ao marcar como lido:',
+        'Erro ao marcar mensagens como lidas:',
         error.response?.data || error.message
       )
       throw error

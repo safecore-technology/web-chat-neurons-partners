@@ -412,15 +412,22 @@ class ChatController {
     }
   }
 
-  // Marcar chat como lido
+  // Marcar mensagens de um chat como lidas
   async markAsRead(req, res) {
     try {
       const { instanceId, chatId } = req.params
+      const { readMessages } = req.body || {}
+
+      if (!instanceId) {
+        return res.status(400).json({ error: 'Instância inválida' })
+      }
 
       const instance = await Instance.findOne({
         where: {
           id: instanceId,
-          ...(req.user.role !== 'admin' ? { userId: req.user.id } : {})
+          ...(req.user?.role !== 'admin' && req.user?.id
+            ? { userId: req.user.id }
+            : {})
         }
       })
 
@@ -428,25 +435,81 @@ class ChatController {
         return res.status(404).json({ error: 'Instância não encontrada' })
       }
 
-      const chat = await Chat.findOne({
-        where: { id: chatId, instanceId },
-        include: [Contact]
-      })
+      // Tentar localizar o chat via diferentes identificadores
+      let chat = null
+      if (chatId) {
+        chat = await Chat.findById(chatId)
 
-      if (!chat) {
-        return res.status(404).json({ error: 'Chat não encontrado' })
+        if (!chat && chatId.includes('@')) {
+          chat = await Chat.findOne(chatId, instanceId)
+        }
+
+        if (!chat && /^\d+$/.test(chatId)) {
+          const remoteFromPhone = `${chatId}@s.whatsapp.net`
+          chat = await Chat.findOne(remoteFromPhone, instanceId)
+        }
       }
 
-      // Marcar como lido no WhatsApp
-      await evolutionApi.markAsRead(
-        instance.evolutionInstanceId,
-        chat.Contact.phone
-      )
+      const defaultRemoteJid = (() => {
+        if (Array.isArray(readMessages) && readMessages[0]?.remoteJid) {
+          return readMessages[0].remoteJid
+        }
+        if (chat?.chat_id) {
+          return chat.chat_id
+        }
+        if (chat?.contacts?.phone) {
+          return `${chat.contacts.phone}@s.whatsapp.net`
+        }
+        if (chatId?.includes('@')) {
+          return chatId
+        }
+        if (chatId && /^\d+$/.test(chatId)) {
+          return `${chatId}@s.whatsapp.net`
+        }
+        return null
+      })()
 
-      // Atualizar contador local
-      await chat.update({ unreadCount: 0 })
+      let messagesToMark = Array.isArray(readMessages) ? [...readMessages] : []
 
-      res.json({ message: 'Chat marcado como lido' })
+      // Fallback: buscar últimas mensagens armazenadas
+      if ((!messagesToMark || messagesToMark.length === 0) && chat?.chat_id) {
+        const recentMessages = await Message.findByChatId(chat.chat_id, instanceId, {
+          limit: 10
+        })
+
+        messagesToMark = recentMessages
+          .filter(msg => !msg.from_me && msg.message_id)
+          .map(msg => ({
+            remoteJid: defaultRemoteJid,
+            id: msg.message_id,
+            fromMe: false
+          }))
+      }
+
+      const normalizedMessages = (messagesToMark || [])
+        .map(message => ({
+          remoteJid: message.remoteJid || message.remote_jid || defaultRemoteJid,
+          id: message.id || message.messageId || message.message_id,
+          fromMe: Boolean(message.fromMe)
+        }))
+        .filter(message => message.remoteJid && message.id)
+
+      if (normalizedMessages.length === 0) {
+        return res.status(400).json({ error: 'Nenhuma mensagem válida para marcar como lida' })
+      }
+
+      const evolutionInstanceName =
+        instance.evolution_instance_id ||
+        instance.evolutionInstanceId ||
+        instance.name
+
+      await evolutionApi.markAsRead(evolutionInstanceName, normalizedMessages)
+
+      if (chat?.id) {
+        await Chat.update(chat.id, { unread_count: 0 })
+      }
+
+      res.status(201).json({ message: 'Read messages', read: 'success' })
     } catch (error) {
       console.error('Erro ao marcar chat como lido:', error)
       res.status(500).json({ error: 'Erro interno do servidor' })
