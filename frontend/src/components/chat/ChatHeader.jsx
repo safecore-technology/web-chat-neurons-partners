@@ -263,7 +263,7 @@ const ChatHeader = () => {
           </div>
 
           {/* Ações */}
-          <div className="border-t pt-4 space-y-2">
+          {/* <div className="border-t pt-4 space-y-2">
             <button className="w-full text-left p-3 hover:bg-gray-50 rounded-md transition-colors">
               <div className="flex items-center space-x-3">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -291,7 +291,7 @@ const ChatHeader = () => {
                 <span className="text-sm">Bloquear contato</span>
               </div>
             </button>
-          </div>
+          </div> */}
         </div>
       </Modal>
     </>
