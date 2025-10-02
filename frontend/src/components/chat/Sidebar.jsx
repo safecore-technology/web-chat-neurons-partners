@@ -11,6 +11,59 @@ import { formatRelativeTime, isToday, isYesterday } from '../../utils/dateUtils'
 import { truncateText } from '../../utils/helpers';
 import { MESSAGE_TYPES } from '../../utils/constants';
 
+const MEDIA_LABELS = {
+  [MESSAGE_TYPES.IMAGE]: '📷 Imagem',
+  [MESSAGE_TYPES.VIDEO]: '🎥 Vídeo',
+  [MESSAGE_TYPES.AUDIO]: '🎵 Áudio',
+  [MESSAGE_TYPES.DOCUMENT]: '📎 Documento',
+  [MESSAGE_TYPES.LOCATION]: '📍 Localização',
+  [MESSAGE_TYPES.CONTACT]: '👤 Contato',
+  [MESSAGE_TYPES.STICKER]: '😄 Figurinha'
+};
+
+const normalizeMessageType = (type) => {
+  if (!type) return MESSAGE_TYPES.TEXT;
+
+  const normalized = type.toLowerCase();
+
+  if (normalized.includes('image')) return MESSAGE_TYPES.IMAGE;
+  if (normalized.includes('video')) return MESSAGE_TYPES.VIDEO;
+  if (normalized.includes('audio') || normalized.includes('ptt')) return MESSAGE_TYPES.AUDIO;
+  if (normalized.includes('document')) return MESSAGE_TYPES.DOCUMENT;
+  if (normalized.includes('sticker')) return MESSAGE_TYPES.STICKER;
+  if (normalized.includes('location')) return MESSAGE_TYPES.LOCATION;
+  if (normalized.includes('contact')) return MESSAGE_TYPES.CONTACT;
+  if (normalized.includes('text') || normalized.includes('conversation')) return MESSAGE_TYPES.TEXT;
+
+  return MESSAGE_TYPES.TEXT;
+};
+
+const shouldDisplayContent = (content, rawType) => {
+  if (typeof content !== 'string') return false;
+
+  const trimmed = content.trim();
+  if (!trimmed) return false;
+
+  const normalizedContent = trimmed.toLowerCase();
+  const normalizedType = (rawType || '').toLowerCase();
+
+  if (!normalizedType) return true;
+  if (normalizedContent === normalizedType) return false;
+
+  if (normalizedType.endsWith('message')) {
+    const baseType = normalizedType.replace('message', '');
+    if (normalizedContent === baseType || normalizedContent === `${baseType}message`) {
+      return false;
+    }
+  }
+
+  if (normalizedContent === `${normalizedType}message`) {
+    return false;
+  }
+
+  return true;
+};
+
 const Sidebar = () => {
   const appContext = useApp();
   const { state, dispatch, loadChats, searchMessages, selectChat } = appContext;
@@ -88,34 +141,21 @@ const Sidebar = () => {
 
     const { content, type, fromMe } = messageObj;
     const prefix = fromMe ? 'Você: ' : '';
+    const normalizedType = normalizeMessageType(type);
 
-    switch (type) {
-      case 'text':
+    if (normalizedType === MESSAGE_TYPES.TEXT) {
+      if (typeof content === 'string' && content.trim()) {
         return prefix + truncateText(content, 50);
-      case 'image':
-        return prefix + '📷 Imagem';
-      case 'video':
-        return prefix + '🎥 Vídeo';
-      case 'audio':
-        return prefix + '🎵 Áudio';
-      case 'document':
-        return prefix + '📎 Documento';
-      case 'location':
-        return prefix + '📍 Localização';
-      case 'contact':
-        return prefix + '👤 Contato';
-      default:
-        // Para casos onde o content é texto mas type não está definido corretamente
-        if (content && typeof content === 'string') {
-          // Se o conteúdo já tem emoji (vem do backend), usar direto
-          if (content.includes('📸') || content.includes('🎵') || content.includes('📄')) {
-            return prefix + content;
-          }
-          // Caso contrário, tratar como texto normal
-          return prefix + truncateText(content, 50);
-        }
-        return prefix + 'Mensagem';
+      }
+      return prefix + 'Mensagem de texto';
     }
+
+    if (shouldDisplayContent(content, type)) {
+      return prefix + truncateText(content, 50);
+    }
+
+    const friendlyLabel = MEDIA_LABELS[normalizedType] || 'Mensagem';
+    return prefix + friendlyLabel;
   };
 
   const getLastMessageTime = (chat) => {
